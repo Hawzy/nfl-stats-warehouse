@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nfl-stats-warehouse"
+version = "0.1.0"
+description = "Portable, zero-API-key DuckDB + nflverse Parquet NFL analytics warehouse."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = [
+  "duckdb>=1.1",
+  "nflreadpy>=0.1",
+  "polars>=1.0",
+]
+
+[project.scripts]
+nfl-warehouse = "nfl_warehouse.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

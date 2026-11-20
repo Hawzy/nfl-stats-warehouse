@@ -1,0 +1,334 @@
+{
+  "generated_at": "2026-11-20T04:21:59.440792+00:00",
+  "environment": {
+    "platform": "Windows-11-10.0.26300-SP0",
+    "os": "win32",
+    "machine": "AMD64",
+    "cpu_count": 24,
+    "python_version": "3.12.7",
+    "duckdb_version": "2.0.0",
+    "polars_version": "2.1.0",
+    "nflreadpy_version": "0.1.5"
+  },
+  "profile": "lite",
+  "wall_seconds": 46.852,
+  "peak_rss_mb": 381.74,
+  "footprint": {
+    "warehouse_db_bytes": 16003072,
+    "warehouse_db_mb": 15.26,
+    "parquet_total_bytes": 69610991,
+    "parquet_total_mb": 66.39,
+    "total_bytes": 85614063,
+    "total_mb": 81.65,
+    "dataset_count": 15,
+    "parquet_file_count": 225,
+    "total_rows": 4297162,
+    "datasets": {
+      "ff_opportunity": {
+        "files": 21,
+        "rows": 115458,
+        "bytes": 18473285,
+        "mb": 17.62,
+        "min_season": 2006,
+        "max_season": 2026
+      },
+      "player_stats_week": {
+        "files": 28,
+        "rows": 486605,
+        "bytes": 16109857,
+        "mb": 15.36,
+        "min_season": 1999,
+        "max_season": 2026
+      },
+      "depth_charts": {
+        "files": 26,
+        "rows": 2236252,
+        "bytes": 11062412,
+        "mb": 10.55,
+        "min_season": 2001,
+        "max_season": 2026
+      },
+      "rosters_weekly": {
+        "files": 25,
+        "rows": 933050,
+        "bytes": 9865192,
+        "mb": 9.41,
+        "min_season": 2002,
+        "max_season": 2026
+      },
+      "snap_counts": {
+        "files": 14,
+        "rows": 338616,
+        "bytes": 3211365,
+        "mb": 3.06,
+        "min_season": 2013,
+        "max_season": 2026
+      },
+      "team_stats_week": {
+        "files": 28,
+        "rows": 14831,
+        "bytes": 2903672,
+        "mb": 2.77,
+        "min_season": 1999,
+        "max_season": 2026
+      },
+      "players": {
+        "files": 1,
+        "rows": 24871,
+        "bytes": 2157059,
+        "mb": 2.06,
+        "seasonal": false
+      },
+      "injuries": {
+        "files": 18,
+        "rows": 94173,
+        "bytes": 1618461,
+        "mb": 1.54,
+        "min_season": 2009,
+        "max_season": 2026
+      },
+      "nextgen_receiving": {
+        "files": 11,
+        "rows": 15530,
+        "bytes": 1048535,
+        "mb": 1.0,
+        "min_season": 2016,
+        "max_season": 2026
+      },
+      "ff_playerids": {
+        "files": 1,
+        "rows": 12541,
+        "bytes": 969287,
+        "mb": 0.92,
+        "seasonal": false
+      },
+      "schedules": {
+        "files": 28,
+        "rows": 7548,
+        "bytes": 897930,
+        "mb": 0.86,
+        "min_season": 1999,
+        "max_season": 2026
+      },
+      "nextgen_passing": {
+        "files": 11,
+        "rows": 6273,
+        "bytes": 750614,
+        "mb": 0.72,
+        "min_season": 2016,
+        "max_season": 2026
+      },
+      "nextgen_rushing": {
+        "files": 11,
+        "rows": 6403,
+        "bytes": 448049,
+        "mb": 0.43,
+        "min_season": 2016,
+        "max_season": 2026
+      },
+      "trades": {
+        "files": 1,
+        "rows": 4975,
+        "bytes": 83177,
+        "mb": 0.08,
+        "seasonal": false
+      },
+      "teams": {
+        "files": 1,
+        "rows": 36,
+        "bytes": 12096,
+        "mb": 0.01,
+        "seasonal": false
+      }
+    }
+  },
+  "audit": {
+    "overall_status": "PASS",
+    "audit_wall_seconds": 0.904,
+    "checks": [
+      {
+        "name": "view_portability",
+        "status": "PASS",
+        "view_count": 15,
+        "non_portable_views": {}
+      },
+      {
+        "name": "row_count_floors",
+        "status": "PASS",
+        "profile": "lite",
+        "missing_views": [],
+        "below_floor": [],
+        "row_counts": {
+          "player_stats_week": 486605,
+          "team_stats_week": 14831,
+          "schedules": 7548,
+          "rosters_weekly": 933050,
+          "snap_counts": 338616,
+          "injuries": 94173,
+          "depth_charts": 2236252,
+          "nextgen_passing": 6273,
+          "nextgen_rushing": 6403,
+          "nextgen_receiving": 15530,
+          "ff_opportunity": 115458,
+          "players": 24871,
+          "ff_playerids": 12541,
+          "teams": 36,
+          "trades": 4975
+        }
+      },
+      {
+        "name": "player_dim_integrity",
+        "status": "PASS",
+        "total_players": 24871,
+        "distinct_gsis": 24871,
+        "null_or_blank_gsis": 0,
+        "overall_coverage": {
+          "mfl_id": {
+            "count": 7961,
+            "pct": 32.01
+          },
+          "yahoo_id": {
+            "count": 5314,
+            "pct": 21.37
+          },
+          "sleeper_id": {
+            "count": 6140,
+            "pct": 24.69
+          },
+          "espn_id": {
+            "count": 16604,
+            "pct": 66.76
+          },
+          "fantasypros_id": {
+            "count": 4748,
+            "pct": 19.09
+          },
+          "pfr_id": {
+            "count": 22709,
+            "pct": 91.31
+          },
+          "sportradar_id": {
+            "count": 7147,
+            "pct": 28.74
+          },
+          "rotowire_id": {
+            "count": 7926,
+            "pct": 31.87
+          },
+          "pff_id": {
+            "count": 11652,
+            "pct": 46.85
+          }
+        },
+        "active_skill_coverage": {
+          "season": 2026,
+          "total_skill_players": 574,
+          "ids": {
+            "mfl_id": {
+              "count": 571,
+              "missing": 3,
+              "pct": 99.48
+            },
+            "yahoo_id": {
+              "count": 391,
+              "missing": 183,
+              "pct": 68.12
+            },
+            "sleeper_id": {
+              "count": 567,
+              "missing": 7,
+              "pct": 98.78
+            },
+            "espn_id": {
+              "count": 573,
+              "missing": 1,
+              "pct": 99.83
+            },
+            "fantasypros_id": {
+              "count": 566,
+              "missing": 8,
+              "pct": 98.61
+            },
+            "pfr_id": {
+              "count": 572,
+              "missing": 2,
+              "pct": 99.65
+            },
+            "sportradar_id": {
+              "count": 567,
+              "missing": 7,
+              "pct": 98.78
+            },
+            "rotowire_id": {
+              "count": 571,
+              "missing": 3,
+              "pct": 99.48
+            },
+            "pff_id": {
+              "count": 562,
+              "missing": 12,
+              "pct": 97.91
+            }
+          },
+          "missing_yahoo_by_draft_year": [
+            {
+              "draft_year": 2026,
+              "missing": 61
+            },
+            {
+              "draft_year": 2025,
+              "missing": 63
+            },
+            {
+              "draft_year": null,
+              "missing": 59
+            }
+          ]
+        }
+      },
+      {
+        "name": "team_abbreviation_consistency",
+        "status": "PASS",
+        "checked_relations": [
+          "mart.nextgen_passing_weekly",
+          "mart.nextgen_rushing_weekly",
+          "mart.nextgen_receiving_weekly",
+          "mart.player_team_week",
+          "mart.depth_charts_weekly",
+          "main.team_defense_week_points"
+        ],
+        "violations": {}
+      },
+      {
+        "name": "scoring_reconciliation",
+        "status": "PASS",
+        "ppr_matched_rows": 160345,
+        "ppr_diff_count": 0,
+        "ppr_max_abs_diff": 7.105427357601002e-15,
+        "missing_sites": [],
+        "site_row_counts": {
+          "half_ppr": 175577,
+          "ppr": 175577,
+          "standard": 175577,
+          "yahoo": 175577
+        },
+        "kicker_rows": 60928,
+        "dst_rows": 59320
+      },
+      {
+        "name": "point_in_time_guardrails",
+        "status": "PASS",
+        "nextgen_invalid_week_counts": {
+          "nextgen_passing_weekly": 0,
+          "nextgen_rushing_weekly": 0,
+          "nextgen_receiving_weekly": 0
+        },
+        "participation_references": [],
+        "depth_charts_dt_pregame_rows": 67272,
+        "depth_charts_lookahead_rows": 0,
+        "player_team_week_duplicates": 0,
+        "issues": []
+      }
+    ]
+  }
+}

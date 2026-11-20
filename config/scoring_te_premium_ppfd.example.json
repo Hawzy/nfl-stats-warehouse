@@ -1,0 +1,91 @@
+{
+  "stat_columns": {
+    "pass_yd": ["passing_yards"],
+    "pass_td": ["passing_tds"],
+    "int": ["passing_interceptions", "interceptions"],
+    "rush_yd": ["rushing_yards"],
+    "rush_td": ["rushing_tds"],
+    "rec": ["receptions"],
+    "te_rec": {
+      "position": "TE",
+      "columns": ["receptions"]
+    },
+    "rec_yd": ["receiving_yards"],
+    "rec_td": ["receiving_tds"],
+    "fum_lost_total": {
+      "prefer": ["fumbles_lost_total"],
+      "fallback": ["rushing_fumbles_lost", "receiving_fumbles_lost", "sack_fumbles_lost"]
+    },
+    "two_pt": ["passing_2pt_conversions", "rushing_2pt_conversions", "receiving_2pt_conversions"],
+    "st_td": ["special_teams_tds"],
+    "pass_fd": ["passing_first_downs"],
+    "rush_fd": ["rushing_first_downs"],
+    "rec_fd": ["receiving_first_downs"],
+    "fg_made_0_39": ["fg_made_0_19", "fg_made_20_29", "fg_made_30_39"],
+    "fg_made_40_49": ["fg_made_40_49"],
+    "fg_made_50_plus": ["fg_made_50_59", "fg_made_60_"],
+    "fg_missed": ["fg_missed"],
+    "pat_made": ["pat_made"]
+  },
+  "dst_stat_columns": {
+    "dst_sack": ["def_sacks"],
+    "dst_int": ["def_interceptions"],
+    "dst_fum_rec": ["fumble_recovery_opp"],
+    "dst_td": ["def_tds", "special_teams_tds"],
+    "dst_safety": ["def_safeties"],
+    "dst_block": ["def_punt_blocks", "def_pat_blocks", "def_fg_blocks"]
+  },
+  "rulesets": [
+    {
+      "site": "ppr_tep_ppfd",
+      "valid_from_season": 1999,
+      "valid_to_season": null,
+      "source_url": "https://nflreadr.nflverse.com/articles/dictionary_player_stats.html",
+      "verified_on": "2026-11-19",
+      "rules": {
+        "pass_yd": 0.04,
+        "pass_td": 4.0,
+        "int": -2.0,
+        "pass_fd": 0.25,
+        "rush_yd": 0.1,
+        "rush_td": 6.0,
+        "rush_fd": 0.5,
+        "rec": 1.0,
+        "te_rec": 0.5,
+        "rec_yd": 0.1,
+        "rec_td": 6.0,
+        "rec_fd": 0.5,
+        "fum_lost_total": -2.0,
+        "two_pt": 2.0,
+        "st_td": 6.0
+      },
+      "kicker_rules": {
+        "fg_made_0_39": 3.0,
+        "fg_made_40_49": 4.0,
+        "fg_made_50_plus": 5.0,
+        "fg_missed": -1.0,
+        "pat_made": 1.0
+      },
+      "dst_rules": {
+        "dst_sack": 1.0,
+        "dst_int": 2.0,
+        "dst_fum_rec": 2.0,
+        "dst_td": 6.0,
+        "dst_safety": 2.0,
+        "dst_block": 2.0,
+        "points_allowed_tiers": [
+          {"max_pa": 0, "points": 10.0},
+          {"min_pa": 1, "max_pa": 6, "points": 7.0},
+          {"min_pa": 7, "max_pa": 13, "points": 4.0},
+          {"min_pa": 14, "max_pa": 20, "points": 1.0},
+          {"min_pa": 21, "max_pa": 27, "points": 0.0},
+          {"min_pa": 28, "max_pa": 34, "points": -1.0},
+          {"min_pa": 35, "points": -4.0}
+        ]
+      },
+      "bonuses": [
+        {"stat": "pass_yd", "threshold": 300.0, "points": 2.0}
+      ]
+    }
+  ]
+}

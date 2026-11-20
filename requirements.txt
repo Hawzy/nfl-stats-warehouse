@@ -1,0 +1,3 @@
+duckdb>=1.1
+nflreadpy>=0.1
+polars>=1.0

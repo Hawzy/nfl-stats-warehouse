@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+.env.*
+
+# Runtime DuckDB / SQLite databases
+data/*.duckdb
+data/*.duckdb.wal
+data/*.duckdb.tmp
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+
+# Raw nflverse Parquet downloads & manifest
+data/nflverse/
+
+# Caches & scratch
+.cache/
+scratch/
+
+# Python bytecode & packaging artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
