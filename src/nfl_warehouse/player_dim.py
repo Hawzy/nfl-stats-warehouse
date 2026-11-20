@@ -34,7 +34,7 @@ def _norm_id_sql(expr: str) -> str:
         f"CASE "
         f"WHEN {expr} IS NULL THEN NULL "
         f"WHEN lower(trim(CAST({expr} AS VARCHAR))) IN ('', 'na', 'nan', 'none', 'null') THEN NULL "
-        f"ELSE regexp_replace(trim(CAST({expr} AS VARCHAR)), '\\.0+$', '') "
+        f"ELSE regexp_replace(trim(CAST({expr} AS VARCHAR)), '^([0-9]+)\\.0+$', '\\1') "
         f"END"
     )
 

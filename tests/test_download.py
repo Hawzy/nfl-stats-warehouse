@@ -137,6 +137,17 @@ class TestDownload(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 nflreadpy_fetch(ds, 2022)
 
+    def test_nflreadpy_fetch_disables_memory_cache(self):
+        ds = Dataset(name="schedules", loader="fake_loader", seasonal=True)
+        with patch("nfl_warehouse.download.nflreadpy", create=True) as mock_nfl:
+            mock_nfl.config = MagicMock()
+            mock_nfl.clear_cache = MagicMock()
+            mock_nfl.fake_loader = MagicMock(return_value=pl.DataFrame({"season": [2025]}))
+            df = nflreadpy_fetch(ds, 2025)
+            self.assertEqual(len(df), 1)
+            mock_nfl.config.update_config.assert_called_once_with(cache_mode="off")
+            mock_nfl.clear_cache.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

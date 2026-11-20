@@ -61,19 +61,21 @@ Use `mart.*` instead of raw `nfl.*` views whenever training or evaluating predic
 All 25 cataloged views use `read_parquet(..., union_by_name = true)`:
 - **Lite Profile (`--profile lite` / `--no-pbp`, ~66 MB Parquet / ~82 MB with DuckDB — recommended for Cloud Remote Agents & CI)**:
   - `nfl.player_stats_week`, `nfl.team_stats_week`, `nfl.schedules`, `nfl.rosters_weekly`, `nfl.snap_counts`, `nfl.injuries`, `nfl.depth_charts`, `nfl.nextgen_passing`, `nfl.nextgen_rushing`, `nfl.nextgen_receiving`, `nfl.ff_opportunity`, `nfl.players`, `nfl.ff_playerids`, `nfl.teams`, `nfl.trades`
-- **Core Profile (`--profile core`, default)**: Lite + `nfl.pbp` (play-by-play, ~313 MB)
-- **Full Profile (`--profile full` / `--include-optional`)**: Core + `nfl.participation`, `nfl.ftn_charting`, `nfl.pfr_adv_pass`, `nfl.pfr_adv_rush`, `nfl.pfr_adv_rec`, `nfl.pfr_adv_def`, `nfl.draft_picks`, `nfl.combine`, `nfl.contracts`
+- **Core Profile (`--profile core`, default, ~413 MB Parquet / ~428 MB with DuckDB)**: Lite + `nfl.pbp` (play-by-play, ~346 MB Parquet)
+- **Full Profile (`--profile full` / `--include-optional`, ~445 MB Parquet / ~461 MB with DuckDB)**: Core + `nfl.participation`, `nfl.ftn_charting`, `nfl.pfr_adv_pass`, `nfl.pfr_adv_rush`, `nfl.pfr_adv_rec`, `nfl.pfr_adv_def`, `nfl.draft_picks`, `nfl.combine`, `nfl.contracts`
 
-## 4 Known Lookahead Traps (Never Violate in Backtests)
+## Known Lookahead Traps & Schema Caveats
 1. **`nfl.nextgen_*` `week = 0` rows:** Always use `mart.nextgen_*_weekly` or filter `week >= 1`.
-2. **`nfl.participation` is post-season backfill only:** Never join `nfl.participation` in predictive pre-game features.
+2. **`nfl.participation` backfill & keys:** Published post-season only and has **no `season` or `week` columns** — key on `(nflverse_game_id, play_id)` joined to `nfl.pbp`/`nfl.schedules`; never use in predictive pre-game features.
 3. **`nfl.depth_charts` 2025+ `dt` split:** `season` and `week` are `NULL` in 2025+; always use `mart.depth_charts_weekly` for unified weekly depth charts.
 4. **`nfl.players` current metadata:** Never use `nfl.players.latest_team` or `nfl.players.status` for historical games; use `mart.player_team_week` (`nfl.rosters_weekly`).
+5. **`nfl.ff_opportunity` null IDs:** Contains team-level unattributed plays with `player_id IS NULL`; filter `WHERE player_id IS NOT NULL` when joining to `main.player_dim`.
+6. **DuckDB locking:** Close any open `connect(read_only=True)` sessions before running `--refresh` or `--rebuild`.
 
 ## Hydration, Rebuild & Integrity Audit CLI
 
 ```bash
-# Fast hydration without heavy play-by-play (~66 MB Parquet / ~82 MB with DuckDB vs ~385 MB core)
+# Fast hydration without heavy play-by-play (~66 MB Parquet / ~82 MB with DuckDB vs ~428 MB core)
 python -m nfl_warehouse --profile lite
 
 # Full core hydration or routine open-season refresh
@@ -81,6 +83,9 @@ python -m nfl_warehouse --refresh
 
 # Rebuild DuckDB views, scoring (replaces default presets), player_dim, and mart.* offline from existing Parquet
 python -m nfl_warehouse --rebuild --scoring-config config/scoring_te_premium_ppfd.example.json
+
+# Recover from a corrupted _manifest.json using existing Parquet files on disk
+python -m nfl_warehouse --repair-manifest
 
 # Inspect manifest status without opening DuckDB
 python -m nfl_warehouse --status

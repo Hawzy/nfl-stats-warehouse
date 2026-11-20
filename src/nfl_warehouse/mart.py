@@ -4,7 +4,7 @@ from typing import Callable
 
 import duckdb
 
-__all__ = ["TEAM_ABBR_ROWS", "build_mart_views", "canon_team_sql"]
+__all__ = ["TEAM_ABBR_ROWS", "build_mart_views", "canon_team_sql", "schedule_kickoff_sql"]
 
 _CURRENT_CANON_TEAMS: tuple[str, ...] = (
     "ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE",
@@ -40,6 +40,20 @@ def canon_team_sql(col_expr: str) -> str:
         if raw != canon
     )
     return f"CASE {cases} ELSE upper(trim(CAST({col_expr} AS VARCHAR))) END"
+
+
+def schedule_kickoff_sql(sched_cols: set[str], alias: str = "s") -> str:
+    """Return DuckDB SQL expression computing America/New_York kickoff TIMESTAMPTZ."""
+    if "gametime" in sched_cols:
+        return (
+            f"(TRY_CAST({alias}.gameday AS DATE) + "
+            f"COALESCE(TRY_CAST({alias}.gametime AS TIME), TIME '09:00:00')) "
+            f"AT TIME ZONE 'America/New_York'"
+        )
+    return (
+        f"(TRY_CAST({alias}.gameday AS DATE) + TIME '09:00:00') "
+        f"AT TIME ZONE 'America/New_York'"
+    )
 
 
 def _describe_cols(con: duckdb.DuckDBPyConnection, view_name: str) -> set[str] | None:
@@ -278,12 +292,7 @@ def _build_depth_charts_weekly_view(
             dt_formation = "CAST(NULL AS VARCHAR)"
 
         sched_gt = "s.game_type" if "game_type" in sched_cols else "'REG'"
-        kickoff_expr = (
-            "(TRY_CAST(s.gameday AS DATE) + COALESCE(TRY_CAST(s.gametime AS TIME), TIME '09:00:00')) "
-            "AT TIME ZONE 'America/New_York'"
-            if "gametime" in sched_cols
-            else "(TRY_CAST(s.gameday AS DATE) + TIME '09:00:00') AT TIME ZONE 'America/New_York'"
-        )
+        kickoff_expr = schedule_kickoff_sql(sched_cols, alias="s")
         cte_block = f"""
         WITH sched_teams AS (
             SELECT

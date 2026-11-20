@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import gc
 import os
 from pathlib import Path
 import time
@@ -43,11 +44,26 @@ def parquet_path(paths: WarehousePaths, ds: Dataset, season: int | None) -> Path
     return paths.nflverse_dir / dataset_name / filename
 
 
+def _disable_nflreadpy_cache() -> None:
+    """Disable nflreadpy's default CacheMode.MEMORY to avoid multi-GB RSS leaks."""
+    if nflreadpy is None:
+        return
+    try:
+        cfg_mod = getattr(nflreadpy, "config", None)
+        if cfg_mod is not None and hasattr(cfg_mod, "update_config"):
+            cfg_mod.update_config(cache_mode="off")
+        if hasattr(nflreadpy, "clear_cache"):
+            nflreadpy.clear_cache()
+    except Exception:
+        pass
+
+
 def nflreadpy_fetch(ds: Dataset, season: int | None) -> pl.DataFrame:
     """Fetch dataset from nflreadpy, turning 404/empty responses into DatasetNotAvailable."""
     if nflreadpy is None:
         raise RuntimeError("nflreadpy is not installed")
 
+    _disable_nflreadpy_cache()
     loader_fn = getattr(nflreadpy, ds.loader, None)
     if loader_fn is None:
         raise AttributeError(f"nflreadpy does not have loader {ds.loader!r}")
@@ -105,6 +121,7 @@ def execute_tasks(
     now: Callable[[], datetime] = _utc_now,
 ) -> DownloadSummary:
     """Execute download tasks atomically and persist manifest progress."""
+    _disable_nflreadpy_cache()
     summary = DownloadSummary()
     nflreadpy_version = (
         getattr(nflreadpy, "__version__", "unknown")
@@ -129,6 +146,7 @@ def execute_tasks(
                 cols = getattr(df, "width", None)
                 if cols is None:
                     cols = len(getattr(df, "columns", []))
+                del df
 
                 rel_path = final_path.relative_to(paths.nflverse_dir).as_posix()
                 entry = ManifestEntry(
@@ -144,6 +162,8 @@ def execute_tasks(
                 )
                 manifest.upsert(entry)
                 manifest.save()
+                if task.dataset.heavy:
+                    gc.collect()
 
                 summary.written.append((task.dataset.name, task.season))
                 season_label = task.season if task.season is not None else "latest"

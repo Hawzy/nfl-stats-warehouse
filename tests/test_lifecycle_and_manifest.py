@@ -12,7 +12,7 @@ if str(SRC_DIR) not in sys.path:
 
 from nfl_warehouse.catalog import Dataset
 from nfl_warehouse.lifecycle import DownloadTask, finalize_entries, plan_downloads
-from nfl_warehouse.manifest import Manifest, ManifestEntry
+from nfl_warehouse.manifest import Manifest, ManifestCorruptError, ManifestEntry
 
 DS = [
     Dataset(name="seasonal", loader="load_seasonal", seasonal=True, first_season=2020),
@@ -104,6 +104,15 @@ class TestLifecycleAndManifest(unittest.TestCase):
         m.save()
         loaded = Manifest.load(self.m_path)
         self.assertEqual(loaded.get("players", None).rows, 1)
+
+    def test_corrupt_manifest_raises_actionable_error(self):
+        self.m_path.write_text("{broken json", encoding="utf-8")
+        with self.assertRaisesRegex(ManifestCorruptError, "--repair-manifest"):
+            Manifest.load(self.m_path)
+
+        self.m_path.write_text('{"version": 1, "entries": [{"dataset": "players"}]}', encoding="utf-8")
+        with self.assertRaisesRegex(ManifestCorruptError, "--repair-manifest"):
+            Manifest.load(self.m_path)
 
 
 if __name__ == "__main__":

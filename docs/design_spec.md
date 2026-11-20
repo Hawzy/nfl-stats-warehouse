@@ -12,7 +12,7 @@
 1. **Repo 1 (`nfl-stats-warehouse`, Phase 1 — THIS REPO):**
    - 100% free, zero-API-key, public NFL analytics warehouse (`src/nfl_warehouse/`).
    - 25 cataloged `nflverse` Parquet datasets (`16` core including `team_stats_week` & `trades`, `9` optional including `pfr_adv_def`).
-   - `lite` hydration profile (`--profile lite` / `--no-pbp`, ~66 MB Parquet / ~82 MB with DuckDB vs ~385 MB core) for ephemeral Cloud Remote Agents and CI.
+   - `lite` hydration profile (`--profile lite` / `--no-pbp`, ~66 MB Parquet / ~82 MB with DuckDB vs ~428 MB core / ~461 MB full) for ephemeral Cloud Remote Agents and CI.
    - Portable relative DuckDB `nfl.*` views resolved via `SET file_search_path` + `NFL_WAREHOUSE_DIR`.
    - Public `main.player_dim` (cross-platform IDs, no `latest_team`), `main.site_scoring`, `main.player_week_points` (Offense + K + TE Premium + PPFD), and `main.team_defense_week_points`.
    - Point-in-time backtesting guardrail layer (`mart.team_abbr_map`, `mart.nextgen_*_weekly`, `mart.depth_charts_weekly`, `mart.player_team_week`).

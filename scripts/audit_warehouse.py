@@ -16,6 +16,7 @@ if str(SRC_DIR) not in sys.path:
 
 from nfl_warehouse.catalog import VALID_PROFILES, get_datasets
 from nfl_warehouse.connect import connect
+from nfl_warehouse.mart import schedule_kickoff_sql
 from nfl_warehouse.paths import WarehousePaths
 from nfl_warehouse.telemetry import (
     collect_warehouse_telemetry,
@@ -362,12 +363,7 @@ def _check_point_in_time_guardrails(con: duckdb.DuckDBPyConnection) -> dict[str,
         sched_cols = {
             r[0].lower() for r in con.execute("DESCRIBE nfl.schedules").fetchall()
         }
-        kickoff_expr = (
-            "(TRY_CAST(s.gameday AS DATE) + COALESCE(TRY_CAST(s.gametime AS TIME), TIME '09:00:00')) "
-            "AT TIME ZONE 'America/New_York'"
-            if "gametime" in sched_cols
-            else "(TRY_CAST(s.gameday AS DATE) + TIME '09:00:00') AT TIME ZONE 'America/New_York'"
-        )
+        kickoff_expr = schedule_kickoff_sql(sched_cols, alias="s")
         dc_lookahead_rows = con.execute(
             f"""
             WITH sched_games AS (

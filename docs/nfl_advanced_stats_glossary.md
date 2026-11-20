@@ -155,7 +155,7 @@ LIMIT 20;
 - Actual vs. Expected: `total_fantasy_points`, `total_fantasy_points_diff`, `rec_fantasy_points_diff`, `rush_fantasy_points_diff`
 - Team context totals: `*_team` columns (e.g., `total_fantasy_points_exp_team`, `rec_attempt_team`)
 
-> **Schema Caveat:** `nfl.ff_opportunity` uses `posteam` (not `team`) and `total_fantasy_points` reflects nflverse's standard PPR expectation baseline.
+> **Schema Caveat:** `nfl.ff_opportunity` uses `posteam` (not `team`) and `total_fantasy_points` reflects nflverse's standard PPR expectation baseline. It also includes team-level unattributed rows where `player_id IS NULL` (e.g., throwaways and spikes); filter `WHERE player_id IS NOT NULL` when joining to `main.player_dim` (100% match on non-null IDs).
 
 ### Example SQL: Season Buy-Low & Sell-High Skill Players (`ff_opportunity`)
 ```sql
@@ -208,7 +208,7 @@ Use `mart.nextgen_rushing_weekly` (strips `week = 0` season rollups and normaliz
 
 ### What It Measures
 - **Snap Share (`offense_pct`)**: Percentage of team offensive snaps played by a player (`offense_snaps` / team total offensive snaps).
-- **Join Rule**: `nfl.snap_counts` is keyed by **`pfr_player_id`**, NOT `gsis_id`. Always bridge through `main.player_dim.pfr_id = snap_counts.pfr_player_id`.
+- **Join Rule**: `nfl.snap_counts` is keyed by **`pfr_player_id`**, NOT `gsis_id`. Always bridge through `main.player_dim.pfr_id = snap_counts.pfr_player_id` (~0.12% upstream `pfr_id` gap on sparse/reserve players; non-skill/defensive/OL players appear in `snap_counts` but have no offensive `player_week_points` rows).
 
 ### Example SQL: Join `player_week_points` -> `player_dim` -> `nfl.snap_counts`
 ```sql
@@ -261,7 +261,7 @@ Manually charted play-level context from 2022+ (`nfl.ftn_charting`, joined to `n
 | Trap / Quirk | What Happens in Raw `nfl.*` | Warehouse Solution |
 |---|---|---|
 | **1. NextGen `week = 0` leakage** | `nfl.nextgen_*` mixes `week = 0` full-season rollups into weekly rows. | Query `mart.nextgen_{passing,rushing,receiving}_weekly` (`week >= 1`). |
-| **2. `nfl.participation` backfill** | `participation` is published post-season as a backfill dataset. | Never reference `nfl.participation` in predictive pre-game features. |
+| **2. `nfl.participation` backfill** | `participation` is published post-season as a backfill dataset and has **no `season` or `week` columns** (keyed only by `nflverse_game_id` and `play_id`). | Never reference `nfl.participation` in predictive pre-game features; for post-hoc research, join on `(nflverse_game_id, play_id)` to `nfl.pbp` / `nfl.schedules` for season/week. |
 | **3. `depth_charts` 2025+ split** | Starting 2025, `season`/`week`/`club_code`/`depth_team` are `NULL`, replaced by ISO `dt` timestamps, `team`, `pos_abb`, `pos_rank`. | Query `mart.depth_charts_weekly`, which unifies `legacy_weekly` (<2025) and latest pre-kickoff `dt_pregame` (2025+). |
 | **4. Static `nfl.players.latest_team`** | `nfl.players` reflects current roster status/team, leaking mid-season trades & retirements. | Query `mart.player_team_week` (from `nfl.rosters_weekly`) and `nfl.trades`. |
 | **5. Team abbreviation drift** | NextGen uses `LAR`; legacy rosters use `ARZ`/`BLT`/`CLV`/`HST`/`SL`; schedules pre-relocation use `STL`/`SD`/`OAK`. | Join on `mart.team_abbr_map` (already pre-applied in all `mart.*` views and `main.team_defense_week_points`). |

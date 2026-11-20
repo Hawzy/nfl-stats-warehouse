@@ -321,6 +321,35 @@ class TestCliAndAudit(unittest.TestCase):
         self.assertEqual(pit_check["status"], "FAIL")
         self.assertEqual(pit_check["depth_charts_lookahead_rows"], 1)
 
+    def test_corrupt_manifest_status_and_repair_manifest(self):
+        sch_dir = self.paths.nflverse_dir / "schedules"
+        pl_dir = self.paths.nflverse_dir / "players"
+        sch_dir.mkdir(parents=True, exist_ok=True)
+        pl_dir.mkdir(parents=True, exist_ok=True)
+        pl.DataFrame({"season": [2024], "gameday": ["2025-02-09"]}).write_parquet(
+            sch_dir / "2024.parquet"
+        )
+        pl.DataFrame({"gsis_id": ["00-1"], "display_name": ["QB One"]}).write_parquet(
+            pl_dir / "latest.parquet"
+        )
+        self.paths.manifest_path.write_text("{corrupt", encoding="utf-8")
+
+        err_logs: list[str] = []
+        status_err = run(["--status"], paths=self.paths, log=err_logs.append)
+        self.assertEqual(status_err, 2)
+        self.assertTrue(any("--repair-manifest" in line for line in err_logs))
+
+        repair_logs: list[str] = []
+        repair_code = run(["--repair-manifest"], paths=self.paths, log=repair_logs.append)
+        self.assertEqual(repair_code, 0)
+        self.assertTrue(any("repaired manifest: 2 entries" in line for line in repair_logs))
+
+        ok_logs: list[str] = []
+        status_ok = run(["--status"], paths=self.paths, log=ok_logs.append)
+        self.assertEqual(status_ok, 0)
+        self.assertTrue(any("schedules: seasons 2024" in line and "open: []" in line for line in ok_logs))
+        self.assertTrue(any("players: seasons unseasoned" in line and "open: always-refresh" in line for line in ok_logs))
+
 
 if __name__ == "__main__":
     unittest.main()

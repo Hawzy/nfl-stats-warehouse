@@ -5,7 +5,7 @@ A portable, zero-API-key **DuckDB + nflverse Parquet** NFL analytics warehouse d
 ## Features
 
 - **100% Public & Free**: Hydrates 25 `nflverse` datasets (`16` core + `9` optional) via `nflreadpy` with zero API keys or private credentials.
-- **Fast `--profile lite` (~66 MB Parquet / ~82 MB with DuckDB, vs ~385 MB core)**: Skips heavy play-by-play (`pbp`) so cloud sandboxes and CI jobs hydrate the remaining core datasets in seconds. Note: peak hydration RAM (RSS) can reach ~1–2 GiB depending on OS (disk footprint != memory).
+- **Fast `--profile lite` (~66 MB Parquet / ~82 MB with DuckDB, vs ~428 MB core / ~461 MB full)**: Skips heavy play-by-play (`pbp`, ~346 MB Parquet) so cloud sandboxes and CI jobs hydrate the remaining core datasets in seconds. Peak hydration RSS for `--profile lite` is ~1–2 GiB depending on OS; `download.py` disables `nflreadpy`'s default in-memory cache (`CacheMode.OFF`) during hydration to avoid multi-GiB RAM spikes across 28 seasons of `pbp`.
 - **Zero Hardcoded OS Paths**: `nfl.*` views store relative Parquet paths resolved via `SET file_search_path`, making `data/` portable across Windows and Linux containers without running `--rebuild`.
 - **Point-in-Time Backtesting Guardrails (`mart.*`)**:
   - `mart.team_abbr_map` normalizes `LAR -> LA`, `JAC -> JAX`, `WSH -> WAS`, and historical/PFR codes (`STL`, `SL`, `SD`, `OAK`, `ARZ`, `BLT`, `CLV`, `HST`).
@@ -29,25 +29,30 @@ pip install -e . --no-deps --no-build-isolation
 ## Quick Start
 
 ```bash
-# Fast hydration excluding play-by-play (~66 MB Parquet / ~82 MB with DuckDB)
+# Fast hydration excluding play-by-play (~66 MB Parquet / ~82 MB with DuckDB; recommended for 2-4 GiB CRA/CI)
 python -m nfl_warehouse --profile lite
 
-# Full core hydration including play-by-play (~385 MB)
+# Full core hydration including play-by-play (~413 MB Parquet / ~428 MB with DuckDB)
 python -m nfl_warehouse --profile core
 
 # Routine refresh (open seasons + unseasoned datasets)
 python -m nfl_warehouse --refresh
 
-# Include optional datasets (FTN charting, PFR adv pass/rush/rec/def, participation, draft, combine, contracts)
+# Include optional datasets (~445 MB Parquet / ~461 MB with DuckDB: FTN charting, PFR adv, participation, draft, combine, contracts)
 python -m nfl_warehouse --profile full
 
 # Custom scoring rulesets (replaces default presets; use a separate consumer DuckDB for additive overlays)
 python -m nfl_warehouse --rebuild --scoring-config config/scoring_te_premium_ppfd.example.json
 
+# Rebuild _manifest.json from existing Parquet files on disk (recovery from corrupt manifest)
+python -m nfl_warehouse --repair-manifest
+
 # Point at an external or shared data directory
 export NFL_WAREHOUSE_DIR=/mnt/data/nfl-warehouse
 python -m nfl_warehouse --status
 ```
+
+> **Concurrency note:** DuckDB enforces an exclusive write lock whenever updating views/tables and forbids mixing `read_only=True` and read-write connections inside the same process. Close any open `connect(read_only=True)` sessions before running `--refresh` or `--rebuild`.
 
 ## Connecting from Python
 

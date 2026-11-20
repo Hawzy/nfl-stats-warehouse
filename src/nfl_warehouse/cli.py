@@ -18,7 +18,7 @@ from nfl_warehouse.download import (
     nflreadpy_fetch,
 )
 from nfl_warehouse.lifecycle import candidate_seasons, finalize_entries, plan_downloads
-from nfl_warehouse.manifest import Manifest, ManifestEntry
+from nfl_warehouse.manifest import Manifest, ManifestCorruptError, ManifestEntry
 from nfl_warehouse.mart import build_mart_views
 from nfl_warehouse.paths import WarehousePaths, default_scoring_config_path
 from nfl_warehouse.player_dim import build_player_dim
@@ -60,6 +60,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--status",
         action="store_true",
         help="Print dataset manifest summary without opening the warehouse",
+    )
+    mode_group.add_argument(
+        "--repair-manifest",
+        action="store_true",
+        help="Rebuild _manifest.json from existing Parquet files on disk",
     )
 
     parser.add_argument(
@@ -134,9 +139,23 @@ def _determine_current_season(override: int | None) -> int:
     return datetime.now().year
 
 
+def _installed_nflreadpy_version() -> str:
+    """Return installed nflreadpy version string or 'unknown'."""
+    try:
+        import nflreadpy
+
+        return str(getattr(nflreadpy, "__version__", "unknown"))
+    except Exception:
+        return "unknown"
+
+
 def _report_status(paths: WarehousePaths, log: Callable[[str], None]) -> int:
     """Print dataset summary from manifest without opening DuckDB."""
-    manifest = Manifest.load(paths.manifest_path)
+    try:
+        manifest = Manifest.load(paths.manifest_path)
+    except ManifestCorruptError as exc:
+        log(str(exc))
+        return 2
     entries = manifest.entries()
     if not entries:
         log("manifest is empty: no datasets recorded")
@@ -245,7 +264,28 @@ def run(
     if args.status:
         return _report_status(paths, log)
 
-    manifest = Manifest.load(paths.manifest_path)
+    if args.repair_manifest:
+        try:
+            manifest = Manifest.rebuild_from_disk(
+                paths.nflverse_dir,
+                paths.manifest_path,
+                nflreadpy_version=_installed_nflreadpy_version(),
+            )
+        except ValueError as exc:
+            log(f"Manifest repair failed: {exc}")
+            return 2
+        finalize_entries(manifest, _compute_season_end_dates(paths))
+        manifest.save()
+        log(
+            f"repaired manifest: {len(manifest.entries())} entries written to {paths.manifest_path}"
+        )
+        return 0
+
+    try:
+        manifest = Manifest.load(paths.manifest_path)
+    except ManifestCorruptError as exc:
+        log(str(exc))
+        return 2
     summary = DownloadSummary()
     skipped = 0
 
@@ -286,9 +326,9 @@ def run(
 
     try:
         con = connect_fn(paths, log=log)
-    except duckdb.IOException:
+    except (duckdb.IOException, duckdb.ConnectionException):
         log(
-            f"warehouse is in use by another process; close it and retry: "
+            f"warehouse is in use by another process or open with conflicting config; close readers and retry: "
             f"{paths.warehouse_path}"
         )
         return 1
@@ -316,6 +356,10 @@ def run(
 
         build_player_dim(con, log=log)
         build_mart_views(con, log=log)
+        try:
+            con.execute("CHECKPOINT")
+        except duckdb.Error:
+            pass
     finally:
         con.close()
 
