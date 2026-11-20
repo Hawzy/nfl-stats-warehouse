@@ -39,19 +39,24 @@ def _norm_id_sql(expr: str) -> str:
     )
 
 
-def _coalesce_cols(
-    alias: str,
-    candidates: tuple[str, ...],
-    available: set[str],
+def _coalesce_sources(
+    sources: list[tuple[str, tuple[str, ...], set[str]]],
     *,
     cast_as: str | None = None,
 ) -> str:
-    """Build a coalesce expression over whichever candidate columns exist."""
-    present = [f"{alias}.{col}" for col in candidates if col in available]
+    """Build a coalesce expression across ordered (alias, candidates, available_cols) sources."""
+    present: list[str] = []
+    for alias, candidates, available in sources:
+        for col in candidates:
+            if col in available:
+                raw_ref = f"{alias}.{col}"
+                if cast_as:
+                    present.append(f"TRY_CAST({raw_ref} AS {cast_as})")
+                else:
+                    present.append(f"NULLIF(trim(CAST({raw_ref} AS VARCHAR)), '')")
     if not present:
         return f"CAST(NULL AS {cast_as or 'VARCHAR'})"
-    expr = present[0] if len(present) == 1 else f"coalesce({', '.join(present)})"
-    return f"TRY_CAST({expr} AS {cast_as})" if cast_as else expr
+    return present[0] if len(present) == 1 else f"coalesce({', '.join(present)})"
 
 
 def _resolve_ext_id_expr(
@@ -120,15 +125,48 @@ def build_player_dim(
     else:
         dropped_no_gsis = con.execute("SELECT count(*) FROM nfl.ff_playerids").fetchone()[0]
 
-    display_name_expr = _coalesce_cols("p", ("display_name", "name"), cols_players)
-    position_expr = _coalesce_cols("p", ("position",), cols_players)
-    birth_date_expr = _coalesce_cols("p", ("birth_date", "birthdate"), cols_players, cast_as="DATE")
-    height_expr = _coalesce_cols("p", ("height",), cols_players, cast_as="DOUBLE")
-    weight_expr = _coalesce_cols("p", ("weight",), cols_players, cast_as="DOUBLE")
-    college_expr = _coalesce_cols("p", ("college_name", "college"), cols_players)
-    draft_year_expr = _coalesce_cols("p", ("draft_year",), cols_players, cast_as="INT")
-    draft_round_expr = _coalesce_cols("p", ("draft_round",), cols_players, cast_as="INT")
-    draft_pick_expr = _coalesce_cols("p", ("draft_pick", "draft_number"), cols_players, cast_as="INT")
+    display_name_expr = _coalesce_sources(
+        [("p", ("display_name", "name"), cols_players), ("ff", ("name",), cols_ff)]
+    )
+    position_expr = _coalesce_sources(
+        [("p", ("position",), cols_players), ("ff", ("position",), cols_ff)]
+    )
+    birth_date_expr = _coalesce_sources(
+        [
+            ("p", ("birth_date", "birthdate"), cols_players),
+            ("ff", ("birthdate", "birth_date"), cols_ff),
+        ],
+        cast_as="DATE",
+    )
+    height_expr = _coalesce_sources(
+        [("p", ("height",), cols_players), ("ff", ("height",), cols_ff)],
+        cast_as="DOUBLE",
+    )
+    weight_expr = _coalesce_sources(
+        [("p", ("weight",), cols_players), ("ff", ("weight",), cols_ff)],
+        cast_as="DOUBLE",
+    )
+    college_expr = _coalesce_sources(
+        [
+            ("p", ("college_name", "college"), cols_players),
+            ("ff", ("college", "college_name"), cols_ff),
+        ]
+    )
+    draft_year_expr = _coalesce_sources(
+        [("p", ("draft_year",), cols_players), ("ff", ("draft_year",), cols_ff)],
+        cast_as="INT",
+    )
+    draft_round_expr = _coalesce_sources(
+        [("p", ("draft_round",), cols_players), ("ff", ("draft_round",), cols_ff)],
+        cast_as="INT",
+    )
+    draft_pick_expr = _coalesce_sources(
+        [
+            ("p", ("draft_pick", "draft_number"), cols_players),
+            ("ff", ("draft_pick", "draft_ovr"), cols_ff),
+        ],
+        cast_as="INT",
+    )
 
     fallback_merge_name = (
         f"trim(regexp_replace(regexp_replace(lower({display_name_expr}), '[^a-z ]', '', 'g'), "
@@ -202,7 +240,7 @@ def build_player_dim(
         {ext_col_names}
     )
     SELECT
-        trim(CAST(p.gsis_id AS VARCHAR)) AS gsis_id,
+        coalesce(trim(CAST(p.gsis_id AS VARCHAR)), trim(CAST(ff.gsis_id AS VARCHAR))) AS gsis_id,
         {display_name_expr} AS display_name,
         {merge_name_expr} AS merge_name,
         {position_expr} AS position,
@@ -215,7 +253,7 @@ def build_player_dim(
         {draft_pick_expr} AS draft_pick,
         {ext_col_exprs}
     FROM p_dedup p
-    LEFT JOIN ff_dedup ff
+    FULL OUTER JOIN ff_dedup ff
       ON trim(CAST(p.gsis_id AS VARCHAR)) = trim(CAST(ff.gsis_id AS VARCHAR))
     """
     con.execute(insert_sql)

@@ -138,6 +138,7 @@ def collect_warehouse_telemetry(
     paths: WarehousePaths,
     *,
     wall_seconds: float | None = None,
+    peak_rss_mb: float | None = None,
     profile: str | None = None,
     audit_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -161,7 +162,7 @@ def collect_warehouse_telemetry(
         },
         "profile": profile,
         "wall_seconds": round(wall_seconds, 3) if wall_seconds is not None else None,
-        "peak_rss_mb": get_peak_rss_mb(),
+        "peak_rss_mb": round(peak_rss_mb, 2) if peak_rss_mb is not None else get_peak_rss_mb(),
         "footprint": {
             "warehouse_db_bytes": db_bytes,
             "warehouse_db_mb": round(db_bytes / (1024 * 1024), 2),

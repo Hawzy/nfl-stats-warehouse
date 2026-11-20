@@ -51,18 +51,21 @@ class TestPlayerDim(unittest.TestCase):
 
         pl.DataFrame(
             {
-                "gsis_id": ["00-0034796", "00-0034796", "00-0036212", None],
-                "db_season": [2022, 2026, 2026, 2026],
-                "mfl_id": [None, 13589.0, 14056.0, 99999.0],
-                "yahoo_id": [None, 30977.0, None, None],
-                "fantasypros_id": [None, 17233.0, None, None],
-                "sleeper_id": ["1111", "4881", None, None],
-                "espn_id": [None, "3916387", None, None],
-                "pfr_id": [None, "JackLa00_ff", None, "Anon00"],
-                "sportradar_id": [None, "fb52b041-0000-0000-0000-000000000000", None, None],
-                "rotowire_id": [None, 12553.0, None, None],
-                "pff_id": [None, None, None, None],
-                "merge_name": [None, "lamar jackson", "tua tagovailoa", "ghost player"],
+                "gsis_id": ["00-0034796", "00-0034796", "00-0036212", "00-0041004", None],
+                "db_season": [2022, 2026, 2026, 2026, 2026],
+                "mfl_id": [None, 13589.0, 14056.0, 17522.0, 99999.0],
+                "yahoo_id": [None, 30977.0, None, None, None],
+                "fantasypros_id": [None, 17233.0, None, None, None],
+                "sleeper_id": ["1111", "4881", None, None, None],
+                "espn_id": [None, "3916387", None, None, None],
+                "pfr_id": [None, "JackLa00_ff", None, None, "Anon00"],
+                "sportradar_id": [None, "fb52b041-0000-0000-0000-000000000000", None, None, None],
+                "rotowire_id": [None, 12553.0, None, None, None],
+                "pff_id": [None, None, None, None, None],
+                "name": [None, None, None, "Rookie Wideout", "Ghost Player"],
+                "position": [None, None, None, "WR", "RB"],
+                "draft_year": [None, None, None, 2026, 2026],
+                "merge_name": [None, "lamar jackson", "tua tagovailoa", None, "ghost player"],
             }
         ).write_parquet(ff_dir / "latest.parquet")
 
@@ -93,7 +96,15 @@ class TestPlayerDim(unittest.TestCase):
     def test_no_latest_team_leak_and_dropped_count(self):
         cols = {r[0].lower() for r in self.con.execute("DESCRIBE main.player_dim").fetchall()}
         self.assertNotIn("latest_team", cols)
-        self.assertEqual(self.result, PlayerDimResult(rows=3, dropped_no_gsis=1))
+        self.assertEqual(self.result, PlayerDimResult(rows=4, dropped_no_gsis=1))
+
+    def test_ff_playerids_only_row_preserved_via_outer_join(self):
+        rookie = self._row("00-0041004")
+        self.assertEqual(rookie["display_name"], "Rookie Wideout")
+        self.assertEqual(rookie["merge_name"], "rookie wideout")
+        self.assertEqual(rookie["position"], "WR")
+        self.assertEqual(rookie["draft_year"], 2026)
+        self.assertEqual(rookie["mfl_id"], "17522")
 
     def test_merge_name_fallback_and_missing_views(self):
         self.assertEqual(self._row("00-0031235")["merge_name"], "odell beckham")

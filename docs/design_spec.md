@@ -1,7 +1,7 @@
 # `nfl-stats-warehouse` Architecture & Multi-Repo Split Spec
 
 **Status:** Phase 1 Implemented  
-**Repository:** `c:\github\agy\nfl-stats-warehouse` (Standalone Public Warehouse)
+**Repository:** `nfl-stats-warehouse` (Standalone Public Warehouse)
 
 ---
 
@@ -12,7 +12,7 @@
 1. **Repo 1 (`nfl-stats-warehouse`, Phase 1 — THIS REPO):**
    - 100% free, zero-API-key, public NFL analytics warehouse (`src/nfl_warehouse/`).
    - 25 cataloged `nflverse` Parquet datasets (`16` core including `team_stats_week` & `trades`, `9` optional including `pfr_adv_def`).
-   - `lite` hydration profile (`--profile lite` / `--no-pbp`, ~72 MB vs ~385 MB) for ephemeral Cloud Remote Agents and CI.
+   - `lite` hydration profile (`--profile lite` / `--no-pbp`, ~66 MB Parquet / ~82 MB with DuckDB vs ~385 MB core) for ephemeral Cloud Remote Agents and CI.
    - Portable relative DuckDB `nfl.*` views resolved via `SET file_search_path` + `NFL_WAREHOUSE_DIR`.
    - Public `main.player_dim` (cross-platform IDs, no `latest_team`), `main.site_scoring`, `main.player_week_points` (Offense + K + TE Premium + PPFD), and `main.team_defense_week_points`.
    - Point-in-time backtesting guardrail layer (`mart.team_abbr_map`, `mart.nextgen_*_weekly`, `mart.depth_charts_weekly`, `mart.player_team_week`).
@@ -21,7 +21,7 @@
 2. **Repo 2 (`foobot`, Phase 2 — Downstream Consumer):**
    - Commissioned league SQLite databases & archives (`league_history.db`, `ancient_history.db`, `bot_state.db`, `legacy.*` 4 archived MFL snapshot tables, `config/mfl_ground_truth_owners.json`, `config/manager_dossier.json`).
    - Discord slash commands (`src/bot/`), P2P side-bets, IR audits, local LiteRT Gemma 4 `/ask`, weekly high-scorer recaps, and MNF Monte Carlo sweat sheets.
-   - Custom MFL `40694` scoring overlay passed via `--scoring-config` (or built downstream into a consumer DuckDB).
+   - Custom MFL `40694` scoring built downstream in a separate consumer overlay DuckDB (while `--scoring-config` in this repo replaces default presets inside `nfl_stats.duckdb`).
 
 3. **Future Yahoo DFS & External Feeds Repo (Phase 3 — Downstream Consumer):**
    - Private `yahoo_dfs_*` 6 tables & raw JSON caches (`Jtrey Sports Net`), `fp_rankings`, `fp_rankings_acc`, `betql_events`, `betql_props`, and `src/dfs_opt/` lineup optimizer.
@@ -33,14 +33,14 @@
 - **Parquet Layout (`$NFL_WAREHOUSE_DIR/nflverse/` or `data/nflverse/`):**
   - Seasonal datasets: `<dataset>/<season>.parquet`
   - Non-seasonal datasets: `<dataset>/latest.parquet`
-  - Lifecycle manifest: `_manifest.json` (`GRACE_DAYS = 30` post-Super Bowl before seasonal finalization)
+  - Lifecycle manifest: `_manifest.json` (`GRACE_DAYS = 30` days after `max(schedules.gameday)` — an open seasonal entry finalizes once fetched on or after `max(gameday) + 30 days`, preventing stale mid-season snapshots from freezing prematurely)
 - **Portable DuckDB Views:**
   - `views.py` writes `read_parquet('nflverse/<dataset>/*.parquet', union_by_name = true)` (zero OS drive letters or absolute directory prefixes).
   - Both `create_views()` and `connect()` execute `SET file_search_path = '<data_dir_posix>'`, allowing `data/` to be copied between Windows and Linux containers and queried read-only from any CWD without `--rebuild`.
 
 ---
 
-## 3. Phase 2 Handoff Contract (Extracting `c:\github\agy\foobot`)
+## 3. Phase 2 Handoff Contract (Extracting `../foobot`)
 
 When splitting `foobot` out of `mfl-recap` after the 2026 season (or next phase):
 
@@ -65,7 +65,7 @@ When splitting `foobot` out of `mfl-recap` after the 2026 season (or next phase)
    - For stateful bot operations (registrations, side-bets), `foobot` continues using its own `StateDB` SQLite connection directly while keeping DuckDB read-only.
 3. **Custom MFL `40694` Scoring Overlay:**
    - Keep MFL `40694` specific rules (`floor_zero_stats: ["pass_yd", "rush_yd", "rec_yd"]`, `fum_lost_total: -2.0`, `fum_rec_td: 6.0`, 300/400/500/600 passing yardage bonuses) inside `foobot/config/mfl_scoring.json`.
-   - Rebuild or compute MFL scoring cleanly via `nfl-warehouse --scoring-config path/to/mfl_scoring.json` or an attached consumer DuckDB / SQLite table so the public `nfl-stats-warehouse` repo stays 100% league-agnostic.
+   - Compute MFL scoring in a separate consumer overlay DuckDB (since `--scoring-config` replaces default rulesets in `nfl_stats.duckdb`), keeping the public `nfl-stats-warehouse` repo 100% league-agnostic.
 
 ### Exact Code & Asset Inventory for Phase 2 (`foobot`)
 - **Move into `foobot`:**

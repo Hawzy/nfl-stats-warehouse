@@ -17,7 +17,11 @@ if str(SRC_DIR) not in sys.path:
 from nfl_warehouse.catalog import VALID_PROFILES, get_datasets
 from nfl_warehouse.connect import connect
 from nfl_warehouse.paths import WarehousePaths
-from nfl_warehouse.telemetry import collect_warehouse_telemetry, write_telemetry
+from nfl_warehouse.telemetry import (
+    collect_warehouse_telemetry,
+    get_peak_rss_mb,
+    write_telemetry,
+)
 
 __all__ = ["run_audit", "main"]
 
@@ -355,14 +359,23 @@ def _check_point_in_time_guardrails(con: duckdb.DuckDBPyConnection) -> dict[str,
         ).fetchone()[0]
         if has_dt_raw > 0 and dc_recent_rows == 0:
             issues.append("mart.depth_charts_weekly has 0 dt_pregame rows despite raw dt data")
+        sched_cols = {
+            r[0].lower() for r in con.execute("DESCRIBE nfl.schedules").fetchall()
+        }
+        kickoff_expr = (
+            "(TRY_CAST(s.gameday AS DATE) + COALESCE(TRY_CAST(s.gametime AS TIME), TIME '09:00:00')) "
+            "AT TIME ZONE 'America/New_York'"
+            if "gametime" in sched_cols
+            else "(TRY_CAST(s.gameday AS DATE) + TIME '09:00:00') AT TIME ZONE 'America/New_York'"
+        )
         dc_lookahead_rows = con.execute(
-            """
+            f"""
             WITH sched_games AS (
-                SELECT s.season, s.week, COALESCE(m.team, s.home_team) AS team, TRY_CAST(s.gameday AS DATE) AS gameday
+                SELECT s.season, s.week, COALESCE(m.team, s.home_team) AS team, {kickoff_expr} AS kickoff_ts
                 FROM nfl.schedules s
                 LEFT JOIN mart.team_abbr_map m ON upper(trim(s.home_team)) = m.raw_abbr
                 UNION ALL
-                SELECT s.season, s.week, COALESCE(m.team, s.away_team) AS team, TRY_CAST(s.gameday AS DATE) AS gameday
+                SELECT s.season, s.week, COALESCE(m.team, s.away_team) AS team, {kickoff_expr} AS kickoff_ts
                 FROM nfl.schedules s
                 LEFT JOIN mart.team_abbr_map m ON upper(trim(s.away_team)) = m.raw_abbr
             )
@@ -371,8 +384,8 @@ def _check_point_in_time_guardrails(con: duckdb.DuckDBPyConnection) -> dict[str,
             JOIN sched_games sg
               ON sg.season = dc.season AND sg.week = dc.week AND sg.team = dc.team
             WHERE dc.snapshot_dt IS NOT NULL
-              AND sg.gameday IS NOT NULL
-              AND CAST((dc.snapshot_dt AT TIME ZONE 'UTC') AS DATE) > sg.gameday
+              AND sg.kickoff_ts IS NOT NULL
+              AND dc.snapshot_dt >= sg.kickoff_ts
             """
         ).fetchone()[0]
         if dc_lookahead_rows > 0:
@@ -434,6 +447,7 @@ def run_audit(
     return {
         "overall_status": "PASS" if all_passed else "FAIL",
         "audit_wall_seconds": round(time.perf_counter() - started, 3),
+        "audit_peak_rss_mb": get_peak_rss_mb(),
         "checks": checks,
     }
 
@@ -527,15 +541,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.telemetry_out:
         out_path = Path(args.telemetry_out)
         prev_wall = None
+        prev_peak_rss = None
         if out_path.is_file():
             try:
                 prev = json.loads(out_path.read_text(encoding="utf-8"))
                 prev_wall = prev.get("wall_seconds")
+                prev_peak_rss = prev.get("peak_rss_mb")
             except Exception:
                 prev_wall = None
+                prev_peak_rss = None
         telemetry = collect_warehouse_telemetry(
             paths,
             wall_seconds=prev_wall,
+            peak_rss_mb=prev_peak_rss,
             profile=args.profile,
             audit_summary=audit_report,
         )

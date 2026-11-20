@@ -1,5 +1,6 @@
 """Tests for public scoring presets, fumbles_lost_total, K, DST, TEP, and PPFD."""
 
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -138,6 +139,39 @@ class TestScoring(unittest.TestCase):
         sites = {r["site"] for r in cfg["rulesets"]}
         self.assertEqual(sites, {"ppr", "half_ppr", "standard", "yahoo"})
         self.assertNotIn("mfl", sites)
+
+    def test_bundled_resource_scoring_matches_config_scoring(self):
+        repo_cfg = (REPO_ROOT / "config" / "scoring.json").read_bytes().replace(b"\r\n", b"\n")
+        pkg_cfg = (
+            (REPO_ROOT / "src" / "nfl_warehouse" / "resources" / "scoring.json")
+            .read_bytes()
+            .replace(b"\r\n", b"\n")
+        )
+        self.assertEqual(repo_cfg, pkg_cfg)
+
+    def test_rejects_sql_injection_identifiers_in_scoring_config(self):
+        base = load_scoring_config(REPO_ROOT / "config" / "scoring.json")
+
+        bad_col = json.loads(json.dumps(base))
+        bad_col["stat_columns"]["evil_col"] = ["passing_yards); SELECT 1; --"]
+        col_path = Path(self.tmpdir.name) / "bad_col.json"
+        col_path.write_text(json.dumps(bad_col), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Invalid SQL column identifier"):
+            load_scoring_config(col_path)
+
+        bad_pos_stat = json.loads(json.dumps(base))
+        bad_pos_stat["stat_columns"]["te_rec"]["position"] = "TE') THEN 999 ELSE 0 END) --"
+        pos_stat_path = Path(self.tmpdir.name) / "bad_pos_stat.json"
+        pos_stat_path.write_text(json.dumps(bad_pos_stat), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Invalid position identifier"):
+            load_scoring_config(pos_stat_path)
+
+        bad_pos_rule = json.loads(json.dumps(base))
+        bad_pos_rule["rulesets"][0]["position_rules"] = {"TE') OR 1=1 --": {"rec": 0.5}}
+        pos_rule_path = Path(self.tmpdir.name) / "bad_pos_rule.json"
+        pos_rule_path.write_text(json.dumps(bad_pos_rule), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Invalid position identifier"):
+            load_scoring_config(pos_rule_path)
 
     def test_fumbles_lost_total_kicker_and_dst_scoring(self):
         cfg = load_scoring_config(REPO_ROOT / "config" / "scoring.json")

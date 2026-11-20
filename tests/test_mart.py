@@ -61,20 +61,21 @@ class TestMartGuardrails(unittest.TestCase):
             }
         ).write_parquet(self.paths.nflverse_dir / "rosters_weekly" / "2012.parquet")
 
-        # Schedules for 2025 W1 (LAR plays 2025-09-07)
+        # Schedules for 2025 W1 (LAR plays 2025-09-07 13:00 ET) + 2026 W5 London (JAX plays 2026-10-11 09:30 ET)
         pl.DataFrame(
             {
-                "game_id": ["2025_01_HOU_LA"],
-                "season": [2025],
-                "week": [1],
-                "game_type": ["REG"],
-                "gameday": ["2025-09-07"],
-                "home_team": ["LA"],
-                "away_team": ["HOU"],
+                "game_id": ["2025_01_HOU_LA", "2026_05_CHI_JAX"],
+                "season": [2025, 2026],
+                "week": [1, 5],
+                "game_type": ["REG", "REG"],
+                "gameday": ["2025-09-07", "2026-10-11"],
+                "gametime": ["13:00", "09:30"],
+                "home_team": ["LA", "JAX"],
+                "away_team": ["HOU", "CHI"],
             }
         ).write_parquet(self.paths.nflverse_dir / "schedules" / "2025.parquet")
 
-        # Depth charts split: 2024 legacy season/week + 2025 dt snapshots (pre-game & post-game)
+        # Depth charts split: 2024 legacy season/week + 2025/2026 dt snapshots (pre-kickoff & post-kickoff)
         pl.DataFrame(
             {
                 "season": [2024],
@@ -95,13 +96,21 @@ class TestMartGuardrails(unittest.TestCase):
                     "2025-09-05T07:12:47Z",  # older pre-game
                     "2025-09-07T07:12:47Z",  # latest pre-game (must be selected!)
                     "2025-09-08T07:12:47Z",  # post-game lookahead (must be excluded!)
+                    "2026-10-11T06:01:52Z",  # London 09:30 ET (= 13:30 UTC) pre-kickoff (must be selected!)
+                    "2026-10-11T13:56:31Z",  # London +26.5 min same-day post-kickoff leak (must be excluded!)
                 ],
-                "team": ["LA", "LA", "LA"],
-                "gsis_id": ["00-1", "00-1", "00-1"],
-                "player_name": ["Old Name", "PreGame Stafford", "PostGame Leak"],
-                "pos_abb": ["QB", "QB", "QB"],
-                "pos_rank": [2, 1, 9],
-                "pos_grp": ["Offense", "Offense", "Offense"],
+                "team": ["LA", "LA", "LA", "JAX", "JAX"],
+                "gsis_id": ["00-1", "00-1", "00-1", "00-3", "00-3"],
+                "player_name": [
+                    "Old Name",
+                    "PreGame Stafford",
+                    "PostGame Leak",
+                    "PreKickoff Lawrence",
+                    "PostKickoff London Leak",
+                ],
+                "pos_abb": ["QB", "QB", "QB", "QB", "QB"],
+                "pos_rank": [2, 1, 9, 1, 9],
+                "pos_grp": ["Offense", "Offense", "Offense", "Offense", "Offense"],
             }
         ).write_parquet(self.paths.nflverse_dir / "depth_charts" / "2025.parquet")
 
@@ -146,8 +155,19 @@ class TestMartGuardrails(unittest.TestCase):
             [
                 (2024, 1, "LA", "Matthew Stafford", 1, "legacy_weekly"),
                 (2025, 1, "LA", "PreGame Stafford", 1, "dt_pregame"),
+                (2026, 5, "JAX", "PreKickoff Lawrence", 1, "dt_pregame"),
             ],
         )
+
+    def test_depth_charts_london_kickoff_cutoff(self):
+        rows = self.con.execute(
+            "SELECT player_name, depth_rank, (snapshot_dt AT TIME ZONE 'UTC')::TIMESTAMP "
+            "FROM mart.depth_charts_weekly WHERE season = 2026 AND week = 5 AND team = 'JAX'"
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "PreKickoff Lawrence")
+        self.assertEqual(rows[0][1], 1)
+        self.assertEqual(rows[0][2].isoformat(), "2026-10-11T06:01:52")
 
     def test_no_mart_view_references_participation(self):
         views = self.con.execute(

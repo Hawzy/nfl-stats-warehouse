@@ -278,6 +278,12 @@ def _build_depth_charts_weekly_view(
             dt_formation = "CAST(NULL AS VARCHAR)"
 
         sched_gt = "s.game_type" if "game_type" in sched_cols else "'REG'"
+        kickoff_expr = (
+            "(TRY_CAST(s.gameday AS DATE) + COALESCE(TRY_CAST(s.gametime AS TIME), TIME '09:00:00')) "
+            "AT TIME ZONE 'America/New_York'"
+            if "gametime" in sched_cols
+            else "(TRY_CAST(s.gameday AS DATE) + TIME '09:00:00') AT TIME ZONE 'America/New_York'"
+        )
         cte_block = f"""
         WITH sched_teams AS (
             SELECT
@@ -285,7 +291,7 @@ def _build_depth_charts_weekly_view(
                 CAST(s.week AS INT) AS week,
                 CAST({sched_gt} AS VARCHAR) AS game_type,
                 COALESCE(m.team, s.home_team) AS team,
-                TRY_CAST(s.gameday AS DATE) AS gameday
+                {kickoff_expr} AS kickoff_ts
             FROM nfl.schedules s
             LEFT JOIN mart.team_abbr_map m
               ON upper(trim(CAST(s.home_team AS VARCHAR))) = m.raw_abbr
@@ -296,17 +302,17 @@ def _build_depth_charts_weekly_view(
                 CAST(s.week AS INT) AS week,
                 CAST({sched_gt} AS VARCHAR) AS game_type,
                 COALESCE(m.team, s.away_team) AS team,
-                TRY_CAST(s.gameday AS DATE) AS gameday
+                {kickoff_expr} AS kickoff_ts
             FROM nfl.schedules s
             LEFT JOIN mart.team_abbr_map m
               ON upper(trim(CAST(s.away_team AS VARCHAR))) = m.raw_abbr
             WHERE s.gameday IS NOT NULL
         ),
         sched_dedup AS (
-            SELECT season, week, game_type, team, gameday
+            SELECT season, week, game_type, team, kickoff_ts
             FROM sched_teams
-            WHERE gameday IS NOT NULL
-            QUALIFY row_number() OVER (PARTITION BY season, week, team ORDER BY gameday ASC) = 1
+            WHERE kickoff_ts IS NOT NULL
+            QUALIFY row_number() OVER (PARTITION BY season, week, team ORDER BY kickoff_ts ASC) = 1
         ),
         dt_snapshots AS (
             SELECT DISTINCT
@@ -331,8 +337,8 @@ def _build_depth_charts_weekly_view(
             FROM sched_dedup s
             JOIN dt_snapshots d
               ON d.team = s.team
-             AND CAST((d.dt_ts AT TIME ZONE 'UTC') AS DATE) <= s.gameday
-             AND CAST((d.dt_ts AT TIME ZONE 'UTC') AS DATE) >= s.gameday - INTERVAL 14 DAY
+             AND d.dt_ts < s.kickoff_ts
+             AND d.dt_ts >= s.kickoff_ts - INTERVAL 14 DAY
             QUALIFY row_number() OVER (
                 PARTITION BY s.season, s.week, s.team
                 ORDER BY d.dt_ts DESC

@@ -54,12 +54,12 @@ with connect(
 Use `mart.*` instead of raw `nfl.*` views whenever training or evaluating predictive / historical models:
 - `mart.team_abbr_map`: Canonicalizes all current and legacy/PFR abbreviations (`LAR -> LA`, `JAC -> JAX`, `WSH -> WAS`, `STL/SL -> LA`, `SD -> LAC`, `OAK -> LV`, `ARZ -> ARI`, `BLT -> BAL`, `CLV -> CLE`, `HST -> HOU`).
 - `mart.nextgen_passing_weekly`, `mart.nextgen_rushing_weekly`, `mart.nextgen_receiving_weekly`: Strips `week = 0` season-summary rows (`week >= 1`) and normalizes `team` (`LAR -> LA`).
-- `mart.depth_charts_weekly`: Bridges pre-2025 weekly `season`/`week` rows (`legacy_weekly`) and 2025+ ISO-8601 `dt` snapshots (`dt_pregame`), selecting strictly the latest pre-kickoff snapshot (`CAST((dt AT TIME ZONE 'UTC') AS DATE) <= gameday` within 14 days) per `(season, week, team)`.
+- `mart.depth_charts_weekly`: Bridges pre-2025 weekly `season`/`week` rows (`legacy_weekly`) and 2025+ ISO-8601 `dt` snapshots (`dt_pregame`), selecting strictly the latest pre-kickoff snapshot (`dt_ts < kickoff_ts` in `America/New_York`, within 14 days) per `(season, week, team)`.
 - `mart.player_team_week`: Deduplicated 1-row-per-`(season, week, gsis_id)` historical roster team from `nfl.rosters_weekly` with canonicalized `team`.
 
 ### 3. Raw `nflverse` Parquet Views (`nfl.*`)
 All 25 cataloged views use `read_parquet(..., union_by_name = true)`:
-- **Lite Profile (`--profile lite` / `--no-pbp`, ~72 MB full history — recommended for Cloud Remote Agents & CI)**:
+- **Lite Profile (`--profile lite` / `--no-pbp`, ~66 MB Parquet / ~82 MB with DuckDB — recommended for Cloud Remote Agents & CI)**:
   - `nfl.player_stats_week`, `nfl.team_stats_week`, `nfl.schedules`, `nfl.rosters_weekly`, `nfl.snap_counts`, `nfl.injuries`, `nfl.depth_charts`, `nfl.nextgen_passing`, `nfl.nextgen_rushing`, `nfl.nextgen_receiving`, `nfl.ff_opportunity`, `nfl.players`, `nfl.ff_playerids`, `nfl.teams`, `nfl.trades`
 - **Core Profile (`--profile core`, default)**: Lite + `nfl.pbp` (play-by-play, ~313 MB)
 - **Full Profile (`--profile full` / `--include-optional`)**: Core + `nfl.participation`, `nfl.ftn_charting`, `nfl.pfr_adv_pass`, `nfl.pfr_adv_rush`, `nfl.pfr_adv_rec`, `nfl.pfr_adv_def`, `nfl.draft_picks`, `nfl.combine`, `nfl.contracts`
@@ -73,13 +73,13 @@ All 25 cataloged views use `read_parquet(..., union_by_name = true)`:
 ## Hydration, Rebuild & Integrity Audit CLI
 
 ```bash
-# Fast hydration without heavy play-by-play (~72 MB vs ~385 MB)
+# Fast hydration without heavy play-by-play (~66 MB Parquet / ~82 MB with DuckDB vs ~385 MB core)
 python -m nfl_warehouse --profile lite
 
 # Full core hydration or routine open-season refresh
 python -m nfl_warehouse --refresh
 
-# Rebuild DuckDB views, scoring, player_dim, and mart.* offline from existing Parquet
+# Rebuild DuckDB views, scoring (replaces default presets), player_dim, and mart.* offline from existing Parquet
 python -m nfl_warehouse --rebuild --scoring-config config/scoring_te_premium_ppfd.example.json
 
 # Inspect manifest status without opening DuckDB

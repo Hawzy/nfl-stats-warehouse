@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-20T04:21:59.440792+00:00",
+  "generated_at": "2026-11-20T14:28:26.212205+00:00",
   "environment": {
     "platform": "Windows-11-10.0.26300-SP0",
     "os": "win32",
@@ -11,15 +11,15 @@
     "nflreadpy_version": "0.1.5"
   },
   "profile": "lite",
-  "wall_seconds": 46.852,
-  "peak_rss_mb": 381.74,
+  "wall_seconds": 2.176,
+  "peak_rss_mb": 356.23,
   "footprint": {
-    "warehouse_db_bytes": 16003072,
-    "warehouse_db_mb": 15.26,
+    "warehouse_db_bytes": 26488832,
+    "warehouse_db_mb": 25.26,
     "parquet_total_bytes": 69610991,
     "parquet_total_mb": 66.39,
-    "total_bytes": 85614063,
-    "total_mb": 81.65,
+    "total_bytes": 96099823,
+    "total_mb": 91.65,
     "dataset_count": 15,
     "parquet_file_count": 225,
     "total_rows": 4297162,
@@ -144,7 +144,8 @@
   },
   "audit": {
     "overall_status": "PASS",
-    "audit_wall_seconds": 0.904,
+    "audit_wall_seconds": 1.127,
+    "audit_peak_rss_mb": 393.25,
     "checks": [
       {
         "name": "view_portability",
@@ -179,45 +180,45 @@
       {
         "name": "player_dim_integrity",
         "status": "PASS",
-        "total_players": 24871,
-        "distinct_gsis": 24871,
+        "total_players": 24954,
+        "distinct_gsis": 24954,
         "null_or_blank_gsis": 0,
         "overall_coverage": {
           "mfl_id": {
-            "count": 7961,
-            "pct": 32.01
+            "count": 8044,
+            "pct": 32.24
           },
           "yahoo_id": {
-            "count": 5314,
-            "pct": 21.37
+            "count": 5361,
+            "pct": 21.48
           },
           "sleeper_id": {
-            "count": 6140,
-            "pct": 24.69
+            "count": 6223,
+            "pct": 24.94
           },
           "espn_id": {
-            "count": 16604,
-            "pct": 66.76
+            "count": 16667,
+            "pct": 66.79
           },
           "fantasypros_id": {
-            "count": 4748,
-            "pct": 19.09
+            "count": 4782,
+            "pct": 19.16
           },
           "pfr_id": {
-            "count": 22709,
-            "pct": 91.31
+            "count": 22712,
+            "pct": 91.02
           },
           "sportradar_id": {
-            "count": 7147,
-            "pct": 28.74
+            "count": 7230,
+            "pct": 28.97
           },
           "rotowire_id": {
-            "count": 7926,
-            "pct": 31.87
+            "count": 8009,
+            "pct": 32.1
           },
           "pff_id": {
-            "count": 11652,
-            "pct": 46.85
+            "count": 11679,
+            "pct": 46.8
           }
         },
         "active_skill_coverage": {
@@ -273,15 +274,23 @@
           "missing_yahoo_by_draft_year": [
             {
               "draft_year": 2026,
-              "missing": 61
+              "missing": 79
             },
             {
               "draft_year": 2025,
-              "missing": 63
+              "missing": 93
+            },
+            {
+              "draft_year": 2024,
+              "missing": 5
+            },
+            {
+              "draft_year": 2023,
+              "missing": 3
             },
             {
               "draft_year": null,
-              "missing": 59
+              "missing": 3
             }
           ]
         }
@@ -324,7 +333,7 @@
           "nextgen_receiving_weekly": 0
         },
         "participation_references": [],
-        "depth_charts_dt_pregame_rows": 67272,
+        "depth_charts_dt_pregame_rows": 67118,
         "depth_charts_lookahead_rows": 0,
         "player_team_week_duplicates": 0,
         "issues": []

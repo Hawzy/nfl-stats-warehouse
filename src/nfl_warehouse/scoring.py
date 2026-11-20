@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import re
 from typing import Any, Callable
 
 import duckdb
@@ -16,6 +17,22 @@ __all__ = [
 ]
 
 OFFENSIVE_POSITIONS: tuple[str, ...] = ("QB", "RB", "WR", "TE", "FB")
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_POS_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def _validate_column_name(col: object, stat: str) -> str:
+    """Ensure a stat column identifier is a safe unquoted SQL identifier."""
+    if not isinstance(col, str) or not _IDENT_RE.fullmatch(col):
+        raise ValueError(f"Invalid SQL column identifier {col!r} for stat '{stat}'")
+    return col
+
+
+def _validate_position_name(pos: object, context: str) -> str:
+    """Ensure a position filter token is alphanumeric/underscore only."""
+    if not isinstance(pos, str) or not _POS_RE.fullmatch(pos):
+        raise ValueError(f"Invalid position identifier {pos!r} in {context}")
+    return pos
 
 
 def _validate_stat_spec(stat: object, spec: object) -> None:
@@ -23,30 +40,27 @@ def _validate_stat_spec(stat: object, spec: object) -> None:
     if not isinstance(stat, str) or not stat:
         raise ValueError(f"Invalid stat name {stat!r} in 'stat_columns'")
     if isinstance(spec, list):
-        if not all(isinstance(c, str) for c in spec):
-            raise ValueError(f"Invalid column list for stat '{stat}' in 'stat_columns'")
+        for col in spec:
+            _validate_column_name(col, stat)
         return
     if isinstance(spec, dict):
         if "prefer" in spec and "fallback" in spec:
-            if (
-                not isinstance(spec["prefer"], list)
-                or not isinstance(spec["fallback"], list)
-                or not all(isinstance(c, str) for c in spec["prefer"])
-                or not all(isinstance(c, str) for c in spec["fallback"])
-            ):
+            if not isinstance(spec["prefer"], list) or not isinstance(spec["fallback"], list):
                 raise ValueError(f"Invalid prefer/fallback spec for stat '{stat}'")
+            for col in spec["prefer"]:
+                _validate_column_name(col, stat)
+            for col in spec["fallback"]:
+                _validate_column_name(col, stat)
             return
         if "columns" in spec and ("position" in spec or "positions" in spec):
             cols = spec["columns"]
             positions = spec.get("positions") or ([spec["position"]] if "position" in spec else [])
-            if (
-                not isinstance(cols, list)
-                or not all(isinstance(c, str) for c in cols)
-                or not isinstance(positions, list)
-                or not positions
-                or not all(isinstance(p, str) for p in positions)
-            ):
+            if not isinstance(cols, list) or not isinstance(positions, list) or not positions:
                 raise ValueError(f"Invalid position-gated spec for stat '{stat}'")
+            for col in cols:
+                _validate_column_name(col, stat)
+            for pos in positions:
+                _validate_position_name(pos, f"stat '{stat}'")
             return
     raise ValueError(f"Invalid column spec for stat '{stat}' in 'stat_columns'")
 
@@ -84,7 +98,8 @@ def _validate_ruleset_stats(
         if not isinstance(pos_rules, dict):
             raise ValueError(f"Ruleset '{site}' 'position_rules' must be a dict")
         for pos, p_map in pos_rules.items():
-            if not isinstance(pos, str) or not isinstance(p_map, dict):
+            _validate_position_name(pos, f"position_rules in '{site}'")
+            if not isinstance(p_map, dict):
                 raise ValueError(f"Invalid position_rules entry for '{pos}' in '{site}'")
             for stat in p_map.keys():
                 if stat not in known_stats:
@@ -227,8 +242,12 @@ def build_site_scoring(con: duckdb.DuckDBPyConnection, config: dict[str, Any]) -
 
 
 def _sum_cols_expr(cols: list[str], existing_cols: set[str]) -> str | None:
-    """Return SQL sum over present columns, or None if none exist."""
-    present = [c for c in cols if c.lower() in existing_cols]
+    """Return SQL sum over present allowlisted columns, or None if none exist."""
+    present = [
+        c.lower()
+        for c in cols
+        if isinstance(c, str) and _IDENT_RE.fullmatch(c) and c.lower() in existing_cols
+    ]
     if not present:
         return None
     return " + ".join(f"coalesce(CAST({c} AS DOUBLE), 0.0)" for c in present)
@@ -244,7 +263,11 @@ def _build_stat_expr_map(
         if isinstance(spec, list):
             expr_map[stat] = _sum_cols_expr(spec, existing_cols) or "0.0"
         elif "prefer" in spec:
-            prefer_cols = [c for c in spec["prefer"] if c.lower() in existing_cols]
+            prefer_cols = [
+                c.lower()
+                for c in spec["prefer"]
+                if isinstance(c, str) and _IDENT_RE.fullmatch(c) and c.lower() in existing_cols
+            ]
             fallback_expr = _sum_cols_expr(spec["fallback"], existing_cols) or "0.0"
             if prefer_cols:
                 prefer_expr = (
@@ -257,7 +280,11 @@ def _build_stat_expr_map(
                 expr_map[stat] = fallback_expr
         else:
             positions = spec.get("positions") or [spec["position"]]
-            pos_sql = ", ".join(f"'{p.upper()}'" for p in positions)
+            valid_positions = [
+                _validate_position_name(p, f"stat '{stat}'").upper().replace("'", "''")
+                for p in positions
+            ]
+            pos_sql = ", ".join(f"'{p}'" for p in valid_positions)
             base_expr = _sum_cols_expr(spec["columns"], existing_cols)
             if base_expr is None:
                 expr_map[stat] = "0.0"
@@ -295,6 +322,7 @@ def _offense_formula(rs: dict[str, Any], stat_expr_map: dict[str, str]) -> str:
     terms = _linear_terms(rs.get("rules", {}), stat_expr_map, floor_zero_stats=floor_set)
 
     for pos, p_map in (rs.get("position_rules") or {}).items():
+        _validate_position_name(pos, "position_rules")
         pos_escaped = str(pos).upper().replace("'", "''")
         for stat, mult in p_map.items():
             mult_val = float(mult)

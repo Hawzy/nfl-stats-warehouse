@@ -94,7 +94,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--scoring-config",
         type=str,
         default=None,
-        help="Path to custom scoring JSON config (defaults to config/scoring.json)",
+        help="Path to custom scoring JSON config (replaces default presets; defaults to config/scoring.json)",
     )
     parser.add_argument(
         "--data-dir",
@@ -152,17 +152,18 @@ def _report_status(paths: WarehousePaths, log: Callable[[str], None]) -> int:
         if seasons:
             min_s, max_s = min(seasons), max(seasons)
             season_str = f"{min_s}-{max_s}" if min_s != max_s else str(min_s)
+            open_str = str([e.season for e in ds_entries if not e.finalized])
         else:
             season_str = "unseasoned"
+            open_str = "always-refresh"
 
         total_rows = sum(e.rows for e in ds_entries)
         total_mb = sum(e.bytes for e in ds_entries) / (1024 * 1024)
         latest_dl = max(e.downloaded_at for e in ds_entries)
-        open_seasons = [e.season for e in ds_entries if not e.finalized]
 
         log(
             f"{ds_name}: seasons {season_str}, {len(ds_entries)} files, "
-            f"{total_rows:,} rows, {total_mb:.2f} MB, latest {latest_dl}, open: {open_seasons}"
+            f"{total_rows:,} rows, {total_mb:.2f} MB, latest {latest_dl}, open: {open_str}"
         )
     return 0
 

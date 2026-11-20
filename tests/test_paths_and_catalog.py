@@ -12,7 +12,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from nfl_warehouse.catalog import CATALOG, VALID_PROFILES, get_datasets
-from nfl_warehouse.paths import ENV_WAREHOUSE_DIR, WarehousePaths
+from nfl_warehouse.paths import ENV_WAREHOUSE_DIR, WarehousePaths, default_scoring_config_path
 
 
 class TestPathsAndCatalog(unittest.TestCase):
@@ -35,6 +35,19 @@ class TestPathsAndCatalog(unittest.TestCase):
         self.assertEqual(paths.data_dir, custom.resolve())
         self.assertEqual(paths.warehouse_path, custom.resolve() / "nfl_stats.duckdb")
         self.assertEqual(paths.config_dir, REPO_ROOT / "config")
+
+    def test_non_editable_wheel_requires_env_and_uses_bundled_scoring(self):
+        with patch("nfl_warehouse.paths._find_repo_root", return_value=None):
+            with patch.dict(os.environ, {ENV_WAREHOUSE_DIR: ""}):
+                with self.assertRaisesRegex(RuntimeError, "NFL_WAREHOUSE_DIR"):
+                    WarehousePaths.default()
+            ext = REPO_ROOT / "tmp_wheel_data"
+            with patch.dict(os.environ, {ENV_WAREHOUSE_DIR: str(ext)}):
+                paths = WarehousePaths.default()
+            self.assertEqual(paths.data_dir, ext.resolve())
+            scoring_path = default_scoring_config_path(paths)
+            self.assertTrue(scoring_path.is_file())
+            self.assertEqual(scoring_path.name, "scoring.json")
 
     def test_catalog_counts_and_seasonality_invariants(self):
         self.assertEqual(len(CATALOG), 25)

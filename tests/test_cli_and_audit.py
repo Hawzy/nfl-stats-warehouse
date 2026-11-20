@@ -39,6 +39,7 @@ class FakeLiteFetcher:
                     "week": [1],
                     "game_type": ["REG"],
                     "gameday": ["2025-09-07"],
+                    "gametime": ["13:00"],
                     "home_team": ["SEA"],
                     "away_team": ["SF"],
                     "home_score": [24],
@@ -215,6 +216,10 @@ class TestCliAndAudit(unittest.TestCase):
         self.assertIn("team_stats_week", fetched_datasets)
         self.assertIn("trades", fetched_datasets)
         self.assertTrue(telemetry_path.is_file())
+        hydrate_payload = json.loads(telemetry_path.read_text(encoding="utf-8"))
+        self.assertGreater(hydrate_payload["peak_rss_mb"], 0.0)
+        hydrate_payload["peak_rss_mb"] = 9876.54
+        telemetry_path.write_text(json.dumps(hydrate_payload), encoding="utf-8")
 
         audit_code = audit_warehouse.main(
             [
@@ -233,7 +238,9 @@ class TestCliAndAudit(unittest.TestCase):
         self.assertEqual(payload["audit"]["overall_status"], "PASS")
         self.assertGreater(payload["footprint"]["warehouse_db_bytes"], 0)
         self.assertGreater(get_peak_rss_mb(), 0.0)
-        self.assertGreater(payload["peak_rss_mb"], 0.0)
+        self.assertEqual(payload["peak_rss_mb"], 9876.54)
+        self.assertGreater(payload["audit"]["audit_peak_rss_mb"], 0.0)
+        self.assertLess(payload["audit"]["audit_peak_rss_mb"], 9876.54)
 
         # Verify --rebuild with custom --scoring-config and --status
         with patch("nfl_warehouse.catalog.CATALOG", short_catalog):
@@ -252,6 +259,8 @@ class TestCliAndAudit(unittest.TestCase):
             status_code = run(["--status"], paths=self.paths, log=status_logs.append)
             self.assertEqual(status_code, 0)
             self.assertTrue(any("team_stats_week" in line for line in status_logs))
+            self.assertTrue(any("open: always-refresh" in line for line in status_logs))
+            self.assertFalse(any("open: [None]" in line for line in status_logs))
 
         with connect(self.paths) as con:
             sites = {
@@ -267,6 +276,50 @@ class TestCliAndAudit(unittest.TestCase):
         )
         port_check = next(c for c in bad_report["checks"] if c["name"] == "view_portability")
         self.assertEqual(port_check["status"], "FAIL")
+
+        # Verify audit catches same-day post-kickoff London 09:30 ET leakage
+        with connect(self.paths) as con:
+            con.execute(
+                """
+                CREATE OR REPLACE VIEW mart.depth_charts_weekly AS
+                SELECT
+                    2025 AS season,
+                    1 AS week,
+                    'REG' AS game_type,
+                    TIMESTAMPTZ '2025-09-07 13:56:31+00' AS snapshot_dt,
+                    'SEA' AS team,
+                    '00-1' AS gsis_id,
+                    'Leaked QB' AS player_name,
+                    'QB' AS position,
+                    1 AS depth_rank,
+                    'Offense' AS formation,
+                    'dt_pregame' AS source_format
+                """
+            )
+            con.execute(
+                """
+                CREATE OR REPLACE VIEW nfl.schedules AS
+                SELECT
+                    '2025_01_SF_SEA' AS game_id,
+                    2025 AS season,
+                    1 AS week,
+                    'REG' AS game_type,
+                    '2025-09-07' AS gameday,
+                    '09:30' AS gametime,
+                    'SEA' AS home_team,
+                    'SF' AS away_team,
+                    24 AS home_score,
+                    14 AS away_score
+                """
+            )
+        leak_report = audit_warehouse.run_audit(
+            self.paths, profile="lite", enforce_full_floors=False
+        )
+        pit_check = next(
+            c for c in leak_report["checks"] if c["name"] == "point_in_time_guardrails"
+        )
+        self.assertEqual(pit_check["status"], "FAIL")
+        self.assertEqual(pit_check["depth_charts_lookahead_rows"], 1)
 
 
 if __name__ == "__main__":
