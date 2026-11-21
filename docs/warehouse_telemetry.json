@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-20T20:29:38.326914+00:00",
+  "generated_at": "2026-11-21T18:32:51.089963+00:00",
   "environment": {
     "platform": "Windows-11-10.0.26300-SP0",
     "os": "win32",
@@ -11,15 +11,15 @@
     "nflreadpy_version": "0.1.5"
   },
   "profile": "lite",
-  "wall_seconds": 2.013,
-  "peak_rss_mb": 351.13,
+  "wall_seconds": 2.082,
+  "peak_rss_mb": 385.1,
   "footprint": {
-    "warehouse_db_bytes": 16003072,
-    "warehouse_db_mb": 15.26,
+    "warehouse_db_bytes": 16265216,
+    "warehouse_db_mb": 15.51,
     "parquet_total_bytes": 69610991,
     "parquet_total_mb": 66.39,
-    "total_bytes": 85614063,
-    "total_mb": 81.65,
+    "total_bytes": 85876207,
+    "total_mb": 81.9,
     "dataset_count": 15,
     "parquet_file_count": 225,
     "total_rows": 4297162,
@@ -144,8 +144,8 @@
   },
   "audit": {
     "overall_status": "PASS",
-    "audit_wall_seconds": 1.004,
-    "audit_peak_rss_mb": 385.76,
+    "audit_wall_seconds": 1.407,
+    "audit_peak_rss_mb": 388.2,
     "checks": [
       {
         "name": "view_portability",
@@ -183,6 +183,10 @@
         "total_players": 24954,
         "distinct_gsis": 24954,
         "null_or_blank_gsis": 0,
+        "secondary_id_collisions": {
+          "pfr_id": 2,
+          "rotowire_id": 1
+        },
         "overall_coverage": {
           "mfl_id": {
             "count": 8044,
@@ -304,6 +308,7 @@
           "mart.nextgen_receiving_weekly",
           "mart.player_team_week",
           "mart.depth_charts_weekly",
+          "mart.player_depth_rank_week",
           "main.team_defense_week_points"
         ],
         "violations": {}
@@ -311,15 +316,16 @@
       {
         "name": "scoring_reconciliation",
         "status": "PASS",
-        "ppr_matched_rows": 160345,
+        "ppr_matched_rows": 161848,
         "ppr_diff_count": 0,
         "ppr_max_abs_diff": 7.105427357601002e-15,
+        "unscored_non_k_ppr_rows": 0,
         "missing_sites": [],
         "site_row_counts": {
-          "half_ppr": 175577,
-          "ppr": 175577,
-          "standard": 175577,
-          "yahoo": 175577
+          "half_ppr": 177080,
+          "ppr": 177080,
+          "standard": 177080,
+          "yahoo": 177080
         },
         "kicker_rows": 60928,
         "dst_rows": 59320
@@ -333,9 +339,10 @@
           "nextgen_receiving_weekly": 0
         },
         "participation_references": [],
-        "depth_charts_dt_pregame_rows": 67118,
+        "depth_charts_dt_pregame_rows": 66975,
         "depth_charts_lookahead_rows": 0,
         "player_team_week_duplicates": 0,
+        "player_depth_rank_week_duplicates": 0,
         "issues": []
       }
     ]

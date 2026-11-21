@@ -9,25 +9,25 @@ description: Use when hydrating, auditing, or querying the standalone public NFL
 
 `nfl-stats-warehouse` is a standalone, zero-API-key analytical warehouse built over public **nflverse** Parquet datasets (`data/nflverse/`) and a portable DuckDB catalog (`data/nfl_stats.duckdb`).
 
-All `nfl.*` views store relative Parquet paths resolved at runtime via `SET file_search_path`, so moving `data/` between Windows and Linux Cloud Remote Agents requires **no view rewrites**. Set `NFL_WAREHOUSE_DIR` (or pass `--data-dir`) to point at any external data directory.
+All `nfl.*` views store relative Parquet paths resolved at runtime via `SET GLOBAL file_search_path`, so moving `data/` between Windows and Linux Cloud Remote Agents requires **no view rewrites**. Set `NFL_WAREHOUSE_DIR` (or pass `--data-dir`) to point at any external data directory.
 
 ## Quick Start: Opening in Python
 
-Always use `nfl_warehouse.connect()` with `read_only=True` for analytical queries so concurrent readers never lock:
+Always use `nfl_warehouse.connect()` with `read_only=True` for analytical queries so concurrent readers never lock, and `query_polars(con, sql)` (or `con.sql(sql).pl()`):
 
 ```python
 from pathlib import Path
-from nfl_warehouse import connect
+from nfl_warehouse import connect, query_polars
 
 with connect(read_only=True) as con:
-    df = con.execute("""
+    df = query_polars(con, """
         SELECT season, week, display_name, team, points
         FROM main.player_week_points p
         JOIN main.player_dim d ON d.gsis_id = p.player_id
         WHERE p.site = 'ppr' AND p.season = 2025 AND p.week = 1
         ORDER BY p.points DESC
         LIMIT 15
-    """).pl()
+    """)
 ```
 
 Attach any private consumer SQLite or DuckDB databases strictly `READ_ONLY` at connection time:
@@ -46,16 +46,18 @@ with connect(
 - `main.player_dim`: 1-row-per-`gsis_id` crosswalk (`gsis_id`, `display_name`, `merge_name`, `position`, `birth_date`, `height`, `weight`, `college`, `draft_year`, `draft_round`, `draft_pick`, `mfl_id`, `yahoo_id`, `fantasypros_id`, `sleeper_id`, `espn_id`, `pfr_id`, `sportradar_id`, `rotowire_id`, `pff_id`). Intentionally omits `latest_team` to prevent point-in-time team leakage.
   - **UPSTREAM ID GAP**: Upstream `nflverse/ff_playerids` stopped populating `yahoo_id` starting with the **2025 draft class** (and recent UDFAs). For 2025+ rookies, prefer `gsis_id`, `mfl_id`, `sleeper_id`, `espn_id`, or `fantasypros_id` + normalized name matching.
 - `main.site_scoring`: Flattened rules table (`site`, `valid_from_season`, `valid_to_season`, `scope`, `stat`, `kind`, `threshold`, `points`) loaded from `config/scoring.json` or `--scoring-config`.
-- `main.player_week_points`: Weekly player fantasy points `(player_id, player_name, position, team, season, week, season_type, site, points)` for offense (`QB`, `RB`, `WR`, `TE`, `FB`) and Kickers (`K`), across universal presets (`ppr`, `half_ppr`, `standard`, `yahoo`) or custom configs (`te_rec`, `pass_fd`/`rush_fd`/`rec_fd` PPFD, bonuses).
+- `main.player_week_points`: Weekly player fantasy points `(player_id, player_name, position, team, season, week, season_type, site, points)` for offense (`QB`, `RB`, `WR`, `TE`, `FB`), non-`K` two-way players recording offensive/ST scoring activity (e.g., Travis Hunter), and Kickers (`K`), across universal presets (`ppr`, `half_ppr`, `standard`, `yahoo`) or custom configs (`te_rec`, `pass_fd`/`rush_fd`/`rec_fd` PPFD, bonuses).
   - Note on fumbles: `ppr` / `half_ppr` / `standard` use `fum_lost` (`rushing_fumbles_lost + receiving_fumbles_lost + sack_fumbles_lost`) for exact `0`-diff parity with `nfl.player_stats_week.fantasy_points_ppr`; `yahoo` uses `fum_lost_total` (`fumbles_lost_total`, capturing kick/punt-return and lateral fumbles lost).
+  - Note on `position`: `player_week_points.position` reflects static `nfl.player_stats_week.position` (latest career position); use `mart.player_team_week.position` for point-in-time historical position.
 - `main.team_defense_week_points`: Weekly Team Defense / Special Teams fantasy points `(team, opponent_team, season, week, season_type, game_id, site, points_allowed, points)` derived from `nfl.team_stats_week` + completed `nfl.schedules` scores.
 
 ### 2. Point-in-Time Backtesting Guardrail Layer (`mart.*`)
 Use `mart.*` instead of raw `nfl.*` views whenever training or evaluating predictive / historical models:
 - `mart.team_abbr_map`: Canonicalizes all current and legacy/PFR abbreviations (`LAR -> LA`, `JAC -> JAX`, `WSH -> WAS`, `STL/SL -> LA`, `SD -> LAC`, `OAK -> LV`, `ARZ -> ARI`, `BLT -> BAL`, `CLV -> CLE`, `HST -> HOU`).
 - `mart.nextgen_passing_weekly`, `mart.nextgen_rushing_weekly`, `mart.nextgen_receiving_weekly`: Strips `week = 0` season-summary rows (`week >= 1`) and normalizes `team` (`LAR -> LA`).
-- `mart.depth_charts_weekly`: Bridges pre-2025 weekly `season`/`week` rows (`legacy_weekly`) and 2025+ ISO-8601 `dt` snapshots (`dt_pregame`), selecting strictly the latest pre-kickoff snapshot (`dt_ts < kickoff_ts` in `America/New_York`, within 14 days) per `(season, week, team)`.
-- `mart.player_team_week`: Deduplicated 1-row-per-`(season, week, gsis_id)` historical roster team from `nfl.rosters_weekly` with canonicalized `team`.
+- `mart.depth_charts_weekly`: Slot-level depth chart view (`1` row per player-week-slot) bridging pre-2025 weekly rows (`legacy_weekly`, using `depth_position`) and 2025+ ISO-8601 `dt` snapshots (`dt_pregame`, strictly `dt_ts < kickoff_ts` in `America/New_York` within 14 days), with canonical `unit` (`Offense` / `Defense` / `Special Teams`). Do **not** join directly without aggregating or filtering; prefer `mart.player_depth_rank_week`.
+- `mart.player_depth_rank_week`: Deduplicated 1-row-per-`(season, week, team, gsis_id)` summary (`primary_position`, `primary_unit`, `min_depth_rank`, `offense_depth_rank`, `defense_depth_rank`, `st_depth_rank`, `is_offense_starter`, `is_returner`, `slot_count`) for fanout-free 1:1 joins.
+- `mart.player_team_week`: Deduplicated 1-row-per-`(season, week, gsis_id)` historical roster team from `nfl.rosters_weekly` with canonicalized `team`. **Leakage warning:** `team` is safe pre-kickoff for trades, while `status = 'INA'` reflects ~90m pre-kickoff gameday inactive lists (causes train/serve skew if used in pre-gameday models).
 
 ### 3. Raw `nflverse` Parquet Views (`nfl.*`)
 All 25 cataloged views use `read_parquet(..., union_by_name = true)`:
@@ -70,7 +72,11 @@ All 25 cataloged views use `read_parquet(..., union_by_name = true)`:
 3. **`nfl.depth_charts` 2025+ `dt` split:** `season` and `week` are `NULL` in 2025+; always use `mart.depth_charts_weekly` for unified weekly depth charts.
 4. **`nfl.players` current metadata:** Never use `nfl.players.latest_team` or `nfl.players.status` for historical games; use `mart.player_team_week` (`nfl.rosters_weekly`).
 5. **`nfl.ff_opportunity` null IDs:** Contains team-level unattributed plays with `player_id IS NULL`; filter `WHERE player_id IS NOT NULL` when joining to `main.player_dim`.
-6. **DuckDB locking:** Close any open `connect(read_only=True)` sessions before running `--refresh` or `--rebuild`.
+6. **Upstream 2025–2026 feed gaps & schedule conventions:**
+   - `nfl.injuries.date_modified` is 100% `NULL` starting 2025 (and earlier seasons can have duplicate weekly statuses or rare post-kick TNF timestamps).
+   - `nfl.schedules` `spread_line`/`total_line` are closing-only with **inverted Vegas sign** (`+` = home team favored); `temp`/`wind` reflect observed outdoor game-time weather with upstream blackouts (`2022 W1–W8`, `2026 W5–W11`); future games can have `roof IS NULL`.
+   - `nfl.trades` stops at `2026-04-17` upstream (`2026` draft-day and in-season deals absent).
+7. **DuckDB locking:** Close any open `connect(read_only=True)` sessions before running `--refresh` or `--rebuild`.
 
 ## Hydration, Rebuild & Integrity Audit CLI
 

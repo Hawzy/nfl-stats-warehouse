@@ -208,7 +208,7 @@ Use `mart.nextgen_rushing_weekly` (strips `week = 0` season rollups and normaliz
 
 ### What It Measures
 - **Snap Share (`offense_pct`)**: Percentage of team offensive snaps played by a player (`offense_snaps` / team total offensive snaps).
-- **Join Rule**: `nfl.snap_counts` is keyed by **`pfr_player_id`**, NOT `gsis_id`. Always bridge through `main.player_dim.pfr_id = snap_counts.pfr_player_id` (~0.12% upstream `pfr_id` gap on sparse/reserve players; non-skill/defensive/OL players appear in `snap_counts` but have no offensive `player_week_points` rows).
+- **Join Rule**: `nfl.snap_counts` is keyed by **`pfr_player_id`**, NOT `gsis_id`. Always bridge through `main.player_dim.pfr_id = snap_counts.pfr_player_id` AND canonical `team` (~0.12% upstream `pfr_id` gap on sparse/reserve players; non-skill/defensive/OL players appear in `snap_counts` but have no offensive `player_week_points` rows).
 
 ### Example SQL: Join `player_week_points` -> `player_dim` -> `nfl.snap_counts`
 ```sql
@@ -228,10 +228,13 @@ JOIN nfl.snap_counts sc
  AND sc.season = p.season
  AND sc.week = p.week
  AND sc.game_type = p.season_type
+LEFT JOIN mart.team_abbr_map m
+  ON upper(trim(sc.team)) = m.raw_abbr
 WHERE p.site = 'ppr'
   AND p.season = 2025
   AND p.week = 10
   AND p.position IN ('RB', 'WR', 'TE')
+  AND COALESCE(m.team, sc.team) = p.team
 ORDER BY p.points DESC
 LIMIT 15;
 ```
@@ -262,8 +265,10 @@ Manually charted play-level context from 2022+ (`nfl.ftn_charting`, joined to `n
 |---|---|---|
 | **1. NextGen `week = 0` leakage** | `nfl.nextgen_*` mixes `week = 0` full-season rollups into weekly rows. | Query `mart.nextgen_{passing,rushing,receiving}_weekly` (`week >= 1`). |
 | **2. `nfl.participation` backfill** | `participation` is published post-season as a backfill dataset and has **no `season` or `week` columns** (keyed only by `nflverse_game_id` and `play_id`). | Never reference `nfl.participation` in predictive pre-game features; for post-hoc research, join on `(nflverse_game_id, play_id)` to `nfl.pbp` / `nfl.schedules` for season/week. |
-| **3. `depth_charts` 2025+ split** | Starting 2025, `season`/`week`/`club_code`/`depth_team` are `NULL`, replaced by ISO `dt` timestamps, `team`, `pos_abb`, `pos_rank`. | Query `mart.depth_charts_weekly`, which unifies `legacy_weekly` (<2025) and latest pre-kickoff `dt_pregame` (2025+). |
-| **4. Static `nfl.players.latest_team`** | `nfl.players` reflects current roster status/team, leaking mid-season trades & retirements. | Query `mart.player_team_week` (from `nfl.rosters_weekly`) and `nfl.trades`. |
-| **5. Team abbreviation drift** | NextGen uses `LAR`; legacy rosters use `ARZ`/`BLT`/`CLV`/`HST`/`SL`; schedules pre-relocation use `STL`/`SD`/`OAK`. | Join on `mart.team_abbr_map` (already pre-applied in all `mart.*` views and `main.team_defense_week_points`). |
-| **6. Non-offense fumbles lost** | nflverse `fantasy_points_ppr` counts only `rushing + receiving + sack` fumbles lost, omitting kick/punt return or recovery fumbles captured by `fumbles_lost_total`. | `scoring.py` uses `fum_lost` for exact 0-diff `ppr` parity with nflverse and `fum_lost_total` for `yahoo`. |
-| **7. 2025+ `yahoo_id` upstream gap** | Upstream `nflverse/ff_playerids` stopped populating `yahoo_id` starting with the 2025 draft class. | Join via `gsis_id`, `mfl_id`, `sleeper_id`, `espn_id`, or `fantasypros_id` + normalized name for 2025+ rookies. |
+| **3. `depth_charts` 2025+ split & multi-slot grain** | Starting 2025, `season`/`week`/`club_code`/`depth_team` are `NULL`, replaced by ISO `dt` timestamps, `team`, `pos_abb`, `pos_rank`, and new `pos_grp` values; players with multiple slots (`WR` + `KR`/`PR`) appear multiple times per week. | Use `mart.player_depth_rank_week` for 1:1 `(season, week, team, gsis_id)` joins, or `mart.depth_charts_weekly` (filter by normalized `unit` / `position`) for slot-level pre-kickoff views. |
+| **4. Static `nfl.players.latest_team` & gameday `INA`** | `nfl.players` leaks mid-season trades & retirements; additionally `mart.player_team_week.status` (`INA`) reflects ~90m pre-kickoff inactive lists (0% in unplayed live weeks). | Use `mart.player_team_week.team` (and `position`) for pre-kickoff historical team/position; never feed `status = 'INA'` into pre-gameday predictive features. |
+| **5. Static `player_stats_week.position`** | `nfl.player_stats_week` stamps a player's latest career position across all seasons (e.g., Taysom Hill `TE`, Travis Hunter `CB`). | `main.player_week_points` scores all non-`K` players with offensive/ST-return stats; use `mart.player_team_week.position` for historical week position. |
+| **6. Team abbreviation drift** | NextGen uses `LAR`; legacy rosters use `ARZ`/`BLT`/`CLV`/`HST`/`SL`; schedules pre-relocation use `STL`/`SD`/`OAK`. | Join on `mart.team_abbr_map` (already pre-applied in all `mart.*` views and `main.team_defense_week_points`). |
+| **7. Non-offense fumbles lost** | nflverse `fantasy_points_ppr` counts only `rushing + receiving + sack` fumbles lost, omitting kick/punt return or recovery fumbles captured by `fumbles_lost_total`. | `scoring.py` uses `fum_lost` for exact 0-diff `ppr` parity with nflverse and `fum_lost_total` for `yahoo`. |
+| **8. 2025+ `yahoo_id` upstream gap** | Upstream `nflverse/ff_playerids` stopped populating `yahoo_id` starting with the 2025 draft class. | Join via `gsis_id`, `mfl_id`, `sleeper_id`, `espn_id`, or `fantasypros_id` + normalized name for 2025+ rookies. |
+| **9. Upstream `injuries`, `schedules` & `trades` caveats** | `nfl.injuries.date_modified` is `NULL` in 2025+ (and earlier years can have duplicate statuses or rare post-kick TNF timestamps). `nfl.schedules` `spread_line` is closing-only with `+` = home favored; `temp`/`wind` have blackouts in `2022 W1–W8` and `2026 W5–W11`. `nfl.trades` stops at `2026-04-17`. | Deduplicate `nfl.injuries` with `(date_modified IS NULL OR date_modified < kickoff_ts)`, negate `spread_line` if matching Vegas home-minus convention, and drop `home_score`/`away_score` from feature tables. |

@@ -15,7 +15,7 @@ __all__ = ["create_views", "set_file_search_path"]
 def set_file_search_path(con: duckdb.DuckDBPyConnection, data_dir: Path) -> None:
     """Configure DuckDB file_search_path so relative nfl.* views resolve portably."""
     posix_dir = Path(data_dir).resolve().as_posix().replace("'", "''")
-    con.execute(f"SET file_search_path = '{posix_dir}'")
+    con.execute(f"SET GLOBAL file_search_path = '{posix_dir}'")
 
 
 def _relative_nflverse_prefix(paths: WarehousePaths) -> str:

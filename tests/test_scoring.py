@@ -44,45 +44,53 @@ class TestScoring(unittest.TestCase):
         #    -> PPR: 9.0 ; TEP+PPFD example: 4*1 + 4*0.5 + 5.0 + 2*0.5 = 12.0
         # 3) K1: 2 FG 0-39, 1 FG 40-49, 1 FG 50+, 1 FG missed, 2 PAT made
         #    -> PPR/standard K: 2*3 + 1*4 + 1*5 - 1 + 2 = 16.0 ; Yahoo K (0 missed penalty): 17.0
+        # 4) CB1: Two-way CB with offensive stats (5 rec, 72 rec_yds, 1 rec_td -> 18.2 PPR / 15.7 Yahoo)
+        # 5) CB0: Pure CB with zero offensive stats (excluded from player_week_points)
         pl.DataFrame(
             {
-                "player_id": ["WR1", "TE1", "K1"],
-                "player_display_name": ["Punt Fumble WR", "Tight End One", "Kicker One"],
-                "position": ["WR", "TE", "K"],
-                "team": ["CHI", "KC", "BUF"],
-                "season": [2025, 2025, 2025],
-                "week": [1, 1, 1],
-                "season_type": ["REG", "REG", "REG"],
-                "passing_yards": [0.0, 0.0, 0.0],
-                "passing_tds": [0.0, 0.0, 0.0],
-                "passing_interceptions": [0.0, 0.0, 0.0],
-                "passing_first_downs": [0.0, 0.0, 0.0],
-                "passing_2pt_conversions": [0.0, 0.0, 0.0],
-                "rushing_yards": [0.0, 0.0, 0.0],
-                "rushing_tds": [0.0, 0.0, 0.0],
-                "rushing_first_downs": [0.0, 0.0, 0.0],
-                "rushing_fumbles_lost": [0.0, 0.0, 0.0],
-                "rushing_2pt_conversions": [0.0, 0.0, 0.0],
-                "receptions": [3.0, 4.0, 0.0],
-                "receiving_yards": [68.0, 50.0, 0.0],
-                "receiving_tds": [0.0, 0.0, 0.0],
-                "receiving_first_downs": [2.0, 2.0, 0.0],
-                "receiving_fumbles_lost": [0.0, 0.0, 0.0],
-                "receiving_2pt_conversions": [0.0, 0.0, 0.0],
-                "sack_fumbles_lost": [0.0, 0.0, 0.0],
-                "fumbles_lost_total": [1.0, 0.0, 0.0],
-                "special_teams_tds": [0.0, 0.0, 0.0],
-                "fumble_recovery_tds": [0.0, 0.0, 0.0],
-                "fg_made_0_19": [1.0, 0.0, 1.0],
-                "fg_made_20_29": [0.0, 0.0, 1.0],
-                "fg_made_30_39": [0.0, 0.0, 0.0],
-                "fg_made_40_49": [0.0, 0.0, 1.0],
-                "fg_made_50_59": [0.0, 0.0, 1.0],
-                "fg_made_60_": [0.0, 0.0, 0.0],
-                "fg_made": [0.0, 0.0, 4.0],
-                "fg_missed": [0.0, 0.0, 1.0],
-                "pat_made": [0.0, 0.0, 2.0],
-                "pat_missed": [0.0, 0.0, 0.0],
+                "player_id": ["WR1", "TE1", "K1", "CB1", "CB0"],
+                "player_display_name": [
+                    "Punt Fumble WR",
+                    "Tight End One",
+                    "Kicker One",
+                    "Travis TwoWay",
+                    "Pure Corner",
+                ],
+                "position": ["WR", "TE", "K", "CB", "CB"],
+                "team": ["CHI", "KC", "BUF", "JAX", "JAX"],
+                "season": [2025, 2025, 2025, 2025, 2025],
+                "week": [1, 1, 1, 1, 1],
+                "season_type": ["REG", "REG", "REG", "REG", "REG"],
+                "passing_yards": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "passing_tds": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "passing_interceptions": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "passing_first_downs": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "passing_2pt_conversions": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "rushing_yards": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "rushing_tds": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "rushing_first_downs": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "rushing_fumbles_lost": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "rushing_2pt_conversions": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "receptions": [3.0, 4.0, 0.0, 5.0, 0.0],
+                "receiving_yards": [68.0, 50.0, 0.0, 72.0, 0.0],
+                "receiving_tds": [0.0, 0.0, 0.0, 1.0, 0.0],
+                "receiving_first_downs": [2.0, 2.0, 0.0, 3.0, 0.0],
+                "receiving_fumbles_lost": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "receiving_2pt_conversions": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "sack_fumbles_lost": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "fumbles_lost_total": [1.0, 0.0, 0.0, 0.0, 0.0],
+                "special_teams_tds": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "fumble_recovery_tds": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "fg_made_0_19": [1.0, 0.0, 1.0, 0.0, 0.0],
+                "fg_made_20_29": [0.0, 0.0, 1.0, 0.0, 0.0],
+                "fg_made_30_39": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "fg_made_40_49": [0.0, 0.0, 1.0, 0.0, 0.0],
+                "fg_made_50_59": [0.0, 0.0, 1.0, 0.0, 0.0],
+                "fg_made_60_": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "fg_made": [0.0, 0.0, 4.0, 0.0, 0.0],
+                "fg_missed": [0.0, 0.0, 1.0, 0.0, 0.0],
+                "pat_made": [0.0, 0.0, 2.0, 0.0, 0.0],
+                "pat_missed": [0.0, 0.0, 0.0, 0.0, 0.0],
             }
         ).write_parquet(psw_dir / "2025.parquet")
 
@@ -178,9 +186,22 @@ class TestScoring(unittest.TestCase):
         site_rows = build_site_scoring(self.con, cfg)
         self.assertGreater(site_rows, 0)
         p_rows = build_player_week_points(self.con, cfg, log=lambda _: None)
-        self.assertEqual(p_rows, 12)  # 4 sites * (2 offense + 1 kicker)
+        self.assertEqual(p_rows, 16)  # 4 sites * (2 offense + 1 two-way CB + 1 kicker)
         d_rows = build_team_defense_week_points(self.con, cfg, log=lambda _: None)
         self.assertEqual(d_rows, 8)  # 4 sites * 2 completed team rows (null team & unplayed excluded)
+
+        cb1_ppr = self.con.execute(
+            "SELECT points FROM main.player_week_points WHERE player_id = 'CB1' AND site = 'ppr'"
+        ).fetchone()[0]
+        cb1_yahoo = self.con.execute(
+            "SELECT points FROM main.player_week_points WHERE player_id = 'CB1' AND site = 'yahoo'"
+        ).fetchone()[0]
+        cb0_count = self.con.execute(
+            "SELECT count(*) FROM main.player_week_points WHERE player_id = 'CB0'"
+        ).fetchone()[0]
+        self.assertAlmostEqual(cb1_ppr, 18.2)
+        self.assertAlmostEqual(cb1_yahoo, 15.7)
+        self.assertEqual(cb0_count, 0)
 
         wr_ppr = self.con.execute(
             "SELECT points FROM main.player_week_points WHERE player_id = 'WR1' AND site = 'ppr'"

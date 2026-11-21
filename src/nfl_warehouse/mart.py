@@ -133,7 +133,12 @@ def _build_player_team_week_view(
     con: duckdb.DuckDBPyConnection,
     log: Callable[[str], None],
 ) -> bool:
-    """Create mart.player_team_week deduplicated 1 row per (season, week, gsis_id)."""
+    """Create mart.player_team_week deduplicated 1 row per (season, week, gsis_id).
+
+    Note: `team` is safe for pre-kickoff trade/roster attribution, whereas
+    `status` (`INA`) reflects ~90-minute pre-kickoff gameday inactive lists
+    and must not be used in pre-gameday predictive models.
+    """
     cols = _describe_cols(con, "nfl.rosters_weekly")
     if cols is None:
         log("Skipping mart.player_team_week: nfl.rosters_weekly missing")
@@ -211,8 +216,10 @@ def _build_depth_charts_weekly_view(
         else:
             leg_name = "CAST(NULL AS VARCHAR)"
 
-        if "position" in dc_cols and "pos_abb" in dc_cols:
-            leg_pos = "coalesce(dc.position, dc.pos_abb)"
+        if "depth_position" in dc_cols and "position" in dc_cols:
+            leg_pos = "coalesce(NULLIF(trim(CAST(dc.depth_position AS VARCHAR)), ''), dc.position)"
+        elif "depth_position" in dc_cols:
+            leg_pos = "dc.depth_position"
         elif "position" in dc_cols:
             leg_pos = "dc.position"
         elif "pos_abb" in dc_cols:
@@ -231,6 +238,15 @@ def _build_depth_charts_weekly_view(
 
         leg_gt = "dc.game_type" if "game_type" in dc_cols else "'REG'"
         leg_formation = "dc.formation" if "formation" in dc_cols else "CAST(NULL AS VARCHAR)"
+        leg_unit = (
+            "CASE "
+            "WHEN upper(CAST(dc.formation AS VARCHAR)) LIKE '%SPECIAL%' THEN 'Special Teams' "
+            "WHEN upper(CAST(dc.formation AS VARCHAR)) LIKE '%DEF%' THEN 'Defense' "
+            "WHEN dc.formation IS NOT NULL THEN 'Offense' "
+            "ELSE NULL END"
+            if "formation" in dc_cols
+            else "CAST('Offense' AS VARCHAR)"
+        )
 
         branches.append(
             f"""
@@ -240,16 +256,20 @@ def _build_depth_charts_weekly_view(
                 CAST({leg_gt} AS VARCHAR) AS game_type,
                 CAST(NULL AS TIMESTAMPTZ) AS snapshot_dt,
                 COALESCE(m.team, {leg_team_col}) AS team,
-                CAST(dc.gsis_id AS VARCHAR) AS gsis_id,
+                trim(CAST(dc.gsis_id AS VARCHAR)) AS gsis_id,
                 CAST({leg_name} AS VARCHAR) AS player_name,
                 CAST({leg_pos} AS VARCHAR) AS position,
                 {leg_rank} AS depth_rank,
                 CAST({leg_formation} AS VARCHAR) AS formation,
-                CAST('legacy_weekly' AS VARCHAR) AS source_format
+                CAST('legacy_weekly' AS VARCHAR) AS source_format,
+                CAST({leg_unit} AS VARCHAR) AS unit
             FROM nfl.depth_charts dc
             LEFT JOIN mart.team_abbr_map m
               ON upper(trim(CAST({leg_team_col} AS VARCHAR))) = m.raw_abbr
-            WHERE dc.season IS NOT NULL AND dc.week IS NOT NULL
+            WHERE dc.season IS NOT NULL
+              AND dc.week IS NOT NULL
+              AND dc.gsis_id IS NOT NULL
+              AND trim(CAST(dc.gsis_id AS VARCHAR)) != ''
             """
         )
 
@@ -354,6 +374,17 @@ def _build_depth_charts_weekly_view(
             ) = 1
         )
         """
+        dt_unit = (
+            f"CASE "
+            f"WHEN upper(CAST({dt_formation} AS VARCHAR)) LIKE '%SPECIAL%' THEN 'Special Teams' "
+            f"WHEN upper(CAST({dt_formation} AS VARCHAR)) LIKE '%DEF%' "
+            f"  OR upper(CAST({dt_formation} AS VARCHAR)) LIKE '%3-4%' "
+            f"  OR upper(CAST({dt_formation} AS VARCHAR)) LIKE '%4-3%' "
+            f"  OR upper(CAST({dt_formation} AS VARCHAR)) LIKE '%NICKEL%' "
+            f"  OR upper(CAST({dt_formation} AS VARCHAR)) LIKE '%DIME%' THEN 'Defense' "
+            f"WHEN {dt_formation} IS NOT NULL THEN 'Offense' "
+            f"ELSE NULL END"
+        )
         branches.append(
             f"""
             SELECT
@@ -362,17 +393,20 @@ def _build_depth_charts_weekly_view(
                 ms.game_type,
                 ms.dt_ts AS snapshot_dt,
                 ms.team,
-                CAST(dc.gsis_id AS VARCHAR) AS gsis_id,
+                trim(CAST(dc.gsis_id AS VARCHAR)) AS gsis_id,
                 CAST({dt_name} AS VARCHAR) AS player_name,
                 CAST({dt_pos} AS VARCHAR) AS position,
                 {dt_rank} AS depth_rank,
                 CAST({dt_formation} AS VARCHAR) AS formation,
-                CAST('dt_pregame' AS VARCHAR) AS source_format
+                CAST('dt_pregame' AS VARCHAR) AS source_format,
+                CAST({dt_unit} AS VARCHAR) AS unit
             FROM matched_snapshot ms
             JOIN nfl.depth_charts dc
               ON dc.dt = ms.raw_dt
              AND {dt_team_col} = ms.raw_team
             WHERE dc.dt IS NOT NULL
+              AND dc.gsis_id IS NOT NULL
+              AND trim(CAST(dc.gsis_id AS VARCHAR)) != ''
             """
         )
     else:
@@ -385,6 +419,62 @@ def _build_depth_charts_weekly_view(
     body = "\nUNION ALL\n".join(b.strip() for b in branches)
     prefix = f"{cte_block.strip()}\n" if cte_block else ""
     con.execute(f"CREATE OR REPLACE VIEW mart.depth_charts_weekly AS\n{prefix}{body}")
+    return True
+
+
+def _build_player_depth_rank_week_view(
+    con: duckdb.DuckDBPyConnection,
+    log: Callable[[str], None],
+) -> bool:
+    """Create 1-row-per-(season, week, team, gsis_id) mart.player_depth_rank_week."""
+    cols = _describe_cols(con, "mart.depth_charts_weekly")
+    if cols is None:
+        log("Skipping mart.player_depth_rank_week: mart.depth_charts_weekly missing")
+        return False
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW mart.player_depth_rank_week AS
+        WITH ranked_slots AS (
+            SELECT
+                dc.*,
+                row_number() OVER (
+                    PARTITION BY dc.season, dc.week, dc.team, dc.gsis_id
+                    ORDER BY
+                        CASE dc.unit
+                            WHEN 'Offense' THEN 1
+                            WHEN 'Defense' THEN 2
+                            WHEN 'Special Teams' THEN 3
+                            ELSE 4
+                        END ASC,
+                        dc.depth_rank ASC NULLS LAST,
+                        dc.position ASC NULLS LAST
+                ) AS slot_rn
+            FROM mart.depth_charts_weekly dc
+            WHERE dc.gsis_id IS NOT NULL AND trim(dc.gsis_id) != ''
+        )
+        SELECT
+            season,
+            week,
+            MAX(game_type) FILTER (WHERE slot_rn = 1) AS game_type,
+            MAX(snapshot_dt) AS snapshot_dt,
+            team,
+            gsis_id,
+            MAX(player_name) FILTER (WHERE slot_rn = 1) AS player_name,
+            MAX(position) FILTER (WHERE slot_rn = 1) AS primary_position,
+            MAX(unit) FILTER (WHERE slot_rn = 1) AS primary_unit,
+            MIN(depth_rank) AS min_depth_rank,
+            MIN(depth_rank) FILTER (WHERE unit = 'Offense') AS offense_depth_rank,
+            MIN(depth_rank) FILTER (WHERE unit = 'Defense') AS defense_depth_rank,
+            MIN(depth_rank) FILTER (WHERE unit = 'Special Teams') AS st_depth_rank,
+            COALESCE(MIN(depth_rank) FILTER (WHERE unit = 'Offense') = 1, FALSE) AS is_offense_starter,
+            COALESCE(BOOL_OR(upper(position) IN ('KR', 'PR', 'KOR')), FALSE) AS is_returner,
+            CAST(COUNT(*) AS INT) AS slot_count,
+            MAX(source_format) FILTER (WHERE slot_rn = 1) AS source_format
+        FROM ranked_slots
+        GROUP BY season, week, team, gsis_id
+        """
+    )
     return True
 
 
@@ -402,5 +492,7 @@ def build_mart_views(
         created.append("player_team_week")
     if _build_depth_charts_weekly_view(con, log):
         created.append("depth_charts_weekly")
+        if _build_player_depth_rank_week_view(con, log):
+            created.append("player_depth_rank_week")
 
     return created

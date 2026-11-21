@@ -123,6 +123,7 @@ class FakeLiteFetcher:
                     "player_name": ["QB One"],
                     "pos_abb": ["QB"],
                     "pos_rank": [1],
+                    "pos_grp": ["3WR 1TE"],
                 }
             )
         if ds.name.startswith("nextgen_"):
@@ -293,7 +294,8 @@ class TestCliAndAudit(unittest.TestCase):
                     'QB' AS position,
                     1 AS depth_rank,
                     'Offense' AS formation,
-                    'dt_pregame' AS source_format
+                    'dt_pregame' AS source_format,
+                    'Offense' AS unit
                 """
             )
             con.execute(

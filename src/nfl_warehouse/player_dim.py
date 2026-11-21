@@ -152,20 +152,14 @@ def build_player_dim(
             ("ff", ("college", "college_name"), cols_ff),
         ]
     )
-    draft_year_expr = _coalesce_sources(
-        [("p", ("draft_year",), cols_players), ("ff", ("draft_year",), cols_ff)],
-        cast_as="INT",
+    draft_year_expr = (
+        f"NULLIF({_coalesce_sources([('p', ('draft_year',), cols_players), ('ff', ('draft_year',), cols_ff)], cast_as='INT')}, 0)"
     )
-    draft_round_expr = _coalesce_sources(
-        [("p", ("draft_round",), cols_players), ("ff", ("draft_round",), cols_ff)],
-        cast_as="INT",
+    draft_round_expr = (
+        f"NULLIF({_coalesce_sources([('p', ('draft_round',), cols_players), ('ff', ('draft_round',), cols_ff)], cast_as='INT')}, 0)"
     )
-    draft_pick_expr = _coalesce_sources(
-        [
-            ("p", ("draft_pick", "draft_number"), cols_players),
-            ("ff", ("draft_pick", "draft_ovr"), cols_ff),
-        ],
-        cast_as="INT",
+    draft_pick_expr = (
+        f"NULLIF({_coalesce_sources([('p', ('draft_pick', 'draft_number'), cols_players), ('ff', ('draft_pick', 'draft_ovr'), cols_ff)], cast_as='INT')}, 0)"
     )
 
     fallback_merge_name = (
@@ -180,7 +174,7 @@ def build_player_dim(
         merge_name_expr = fallback_merge_name
 
     ext_selects = [
-        f"{_resolve_ext_id_expr(id_name, cols_players, cols_ff, prefer_players=(id_name == 'pfr_id'))} AS {id_name}"
+        f"{_resolve_ext_id_expr(id_name, cols_players, cols_ff, prefer_players=(id_name in ('pfr_id', 'espn_id', 'pff_id')))} AS {id_name}"
         for id_name in _EXTERNAL_IDS
     ]
 

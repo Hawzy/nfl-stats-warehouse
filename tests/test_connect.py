@@ -13,7 +13,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from nfl_warehouse.connect import connect
+from nfl_warehouse.connect import connect, query_polars
 from nfl_warehouse.paths import WarehousePaths
 
 
@@ -88,6 +88,28 @@ class TestConnect(unittest.TestCase):
         ) as con:
             self.assertEqual(con.execute("SELECT 1").fetchone()[0], 1)
         self.assertTrue(any("missing_db" in line for line in logs))
+
+    def test_query_polars_supports_params_and_empty_results(self):
+        with connect(self.paths, attach={"proj": self.ext_duckdb_path}) as con:
+            pending = con.execute("SELECT 1")
+            df = query_polars(con, "SELECT gsis_id, proj FROM proj.custom_proj")
+            self.assertEqual(df.to_dicts(), [{"gsis_id": "00-1", "proj": 18.5}])
+            self.assertEqual(pending.fetchone()[0], 1)
+
+            param_df = query_polars(
+                con,
+                "SELECT gsis_id, proj FROM proj.custom_proj WHERE gsis_id = ?",
+                ["00-1"],
+            )
+            self.assertEqual(param_df.shape, (1, 2))
+
+            empty_df = query_polars(
+                con,
+                "SELECT gsis_id, proj FROM proj.custom_proj WHERE gsis_id = ?",
+                ["missing"],
+            )
+            self.assertEqual(empty_df.shape, (0, 2))
+            self.assertEqual(empty_df.columns, ["gsis_id", "proj"])
 
     def test_package_has_no_private_league_coupling(self):
         pkg_src = "".join(

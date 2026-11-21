@@ -212,6 +212,16 @@ def _check_player_dim_integrity(con: duckdb.DuckDBPyConnection) -> dict[str, Any
             {"draft_year": yr, "missing": int(cnt)} for yr, cnt, _ in yahoo_by_draft
         ]
 
+    secondary_collisions: dict[str, int] = {}
+    for col in id_cols:
+        dup_cnt = con.execute(
+            f"SELECT count(*) FROM ("
+            f"SELECT {col} FROM main.player_dim WHERE {col} IS NOT NULL GROUP BY 1 HAVING count(*) > 1"
+            f")"
+        ).fetchone()[0]
+        if dup_cnt > 0:
+            secondary_collisions[col] = int(dup_cnt)
+
     passed = total > 0 and total == distinct_gsis and null_gsis == 0
     return {
         "name": "player_dim_integrity",
@@ -219,6 +229,7 @@ def _check_player_dim_integrity(con: duckdb.DuckDBPyConnection) -> dict[str, Any
         "total_players": int(total),
         "distinct_gsis": int(distinct_gsis),
         "null_or_blank_gsis": int(null_gsis),
+        "secondary_id_collisions": secondary_collisions,
         "overall_coverage": overall_cov,
         "active_skill_coverage": active_skill_cov,
     }
@@ -233,6 +244,7 @@ def _check_team_abbreviations(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
         ("mart.nextgen_receiving_weekly", "team"),
         ("mart.player_team_week", "team"),
         ("mart.depth_charts_weekly", "team"),
+        ("mart.player_depth_rank_week", "team"),
         ("main.team_defense_week_points", "team"),
     ]
     violations: dict[str, list[str]] = {}
@@ -274,10 +286,27 @@ def _check_scoring_reconciliation(con: duckdb.DuckDBPyConnection) -> dict[str, A
          AND CAST(psw.week AS INT) = p.week
          AND CAST(psw.season_type AS VARCHAR) = p.season_type
         WHERE p.site = 'ppr'
-          AND p.position IN ('QB', 'RB', 'WR', 'TE', 'FB')
+          AND (p.position IS NULL OR p.position != 'K')
           AND psw.fantasy_points_ppr IS NOT NULL
         """
     ).fetchone()
+    unscored_non_k_ppr = con.execute(
+        """
+        SELECT count(*)
+        FROM nfl.player_stats_week psw
+        LEFT JOIN main.player_week_points p
+          ON p.player_id = psw.player_id
+         AND p.season = CAST(psw.season AS INT)
+         AND p.week = CAST(psw.week AS INT)
+         AND p.season_type = CAST(psw.season_type AS VARCHAR)
+         AND p.site = 'ppr'
+        WHERE psw.player_id IS NOT NULL
+          AND trim(CAST(psw.player_id AS VARCHAR)) != ''
+          AND (psw.position IS NULL OR psw.position != 'K')
+          AND coalesce(psw.fantasy_points_ppr, 0.0) != 0.0
+          AND p.player_id IS NULL
+        """
+    ).fetchone()[0]
 
     site_counts = dict(
         con.execute(
@@ -306,6 +335,7 @@ def _check_scoring_reconciliation(con: duckdb.DuckDBPyConnection) -> dict[str, A
         int(matched_rows) > 0
         and int(diff_count) == 0
         and float(max_abs_diff) <= 1e-9
+        and int(unscored_non_k_ppr) == 0
         and not missing_sites
         and int(kicker_rows) > 0
         and (not has_dst_source or int(dst_rows) > 0)
@@ -316,6 +346,7 @@ def _check_scoring_reconciliation(con: duckdb.DuckDBPyConnection) -> dict[str, A
         "ppr_matched_rows": int(matched_rows),
         "ppr_diff_count": int(diff_count),
         "ppr_max_abs_diff": float(max_abs_diff),
+        "unscored_non_k_ppr_rows": int(unscored_non_k_ppr),
         "missing_sites": missing_sites,
         "site_row_counts": {str(k): int(v) for k, v in site_counts.items()},
         "kicker_rows": int(kicker_rows),
@@ -407,6 +438,24 @@ def _check_point_in_time_guardrails(con: duckdb.DuckDBPyConnection) -> dict[str,
     except duckdb.Error as exc:
         issues.append(f"player_team_week missing: {exc}")
 
+    # 5. player_depth_rank_week key uniqueness
+    pdr_dupes = 0
+    try:
+        pdr_dupes = con.execute(
+            """
+            SELECT count(*) FROM (
+                SELECT season, week, team, gsis_id
+                FROM mart.player_depth_rank_week
+                GROUP BY 1, 2, 3, 4
+                HAVING count(*) > 1
+            )
+            """
+        ).fetchone()[0]
+        if pdr_dupes > 0:
+            issues.append(f"mart.player_depth_rank_week has {pdr_dupes} duplicate keys")
+    except duckdb.Error as exc:
+        issues.append(f"player_depth_rank_week missing: {exc}")
+
     return {
         "name": "point_in_time_guardrails",
         "status": "PASS" if not issues else "FAIL",
@@ -415,6 +464,7 @@ def _check_point_in_time_guardrails(con: duckdb.DuckDBPyConnection) -> dict[str,
         "depth_charts_dt_pregame_rows": int(dc_recent_rows),
         "depth_charts_lookahead_rows": int(dc_lookahead_rows),
         "player_team_week_duplicates": int(ptw_dupes),
+        "player_depth_rank_week_duplicates": int(pdr_dupes),
         "issues": issues,
     }
 
@@ -520,6 +570,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"mfl_id={m_cov.get('pct')}% yahoo_id={y_cov.get('pct')}% "
                     f"(missing={y_cov.get('missing')}) sleeper_id={s_cov.get('pct')}%"
                 )
+            collisions = chk.get("secondary_id_collisions") or {}
+            if collisions:
+                print(f"  [INFO] Secondary ID collisions: {collisions}")
         elif chk["name"] == "scoring_reconciliation":
             print(
                 f"  [INFO] PPR 0-diff vs nflverse: {chk['ppr_matched_rows']:,} matched, "

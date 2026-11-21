@@ -87,6 +87,10 @@ class TestViewsPortability(unittest.TestCase):
                 self.assertEqual(
                     con.execute("SELECT count(*) FROM nfl.players").fetchone()[0], 1
                 )
+                self.assertEqual(
+                    con.cursor().execute("SELECT count(*) FROM nfl.player_stats_week").fetchone()[0],
+                    2,
+                )
 
 
 if __name__ == "__main__":

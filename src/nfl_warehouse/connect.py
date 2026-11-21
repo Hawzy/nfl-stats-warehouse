@@ -2,14 +2,15 @@
 
 from pathlib import Path
 import re
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 import duckdb
+import polars as pl
 
 from nfl_warehouse.paths import WarehousePaths
 from nfl_warehouse.views import set_file_search_path
 
-__all__ = ["connect"]
+__all__ = ["connect", "query_polars"]
 
 _ALIAS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DUCKDB_SUFFIXES = {".duckdb", ".ddb"}
@@ -74,3 +75,26 @@ def connect(
         raise
 
     return con
+
+
+def query_polars(
+    con: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: Sequence[Any] | None = None,
+) -> pl.DataFrame:
+    """Execute SQL on an isolated child cursor and return a Polars DataFrame."""
+    cur = con.cursor()
+    try:
+        try:
+            rel = cur.sql(sql, params=params) if params is not None else cur.sql(sql)
+            return rel.pl()
+        except ModuleNotFoundError:
+            if params is not None:
+                cur.execute(sql, params)
+            else:
+                cur.execute(sql)
+            cols = [d[0] for d in (cur.description or [])]
+            rows = cur.fetchall()
+            return pl.DataFrame(rows, schema=cols, orient="row")
+    finally:
+        cur.close()

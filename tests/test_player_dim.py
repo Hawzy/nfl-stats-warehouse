@@ -43,7 +43,8 @@ class TestPlayerDim(unittest.TestCase):
                 "draft_round": [1, 1, 1, 1],
                 "draft_pick": [32, 5, 12, 24],
                 "pfr_id": ["JackLa00", "TagoTu00", None, "MoorD.00"],
-                "pff_id": ["46416", None, None, None],
+                "espn_id": ["3916387", "4241479", None, None],
+                "pff_id": ["46416", "55555", None, None],
                 "latest_team": ["BAL", "MIA", "MIA", "CHI"],
                 "last_season": [2026, 2026, 2025, 2026],
             }
@@ -57,14 +58,15 @@ class TestPlayerDim(unittest.TestCase):
                 "yahoo_id": [None, 30977.0, None, None, None, None],
                 "fantasypros_id": [None, 17233.0, None, None, None, None],
                 "sleeper_id": ["1111", "4881", None, None, None, None],
-                "espn_id": [None, "3916387", None, None, None, None],
+                "espn_id": [None, "3916387", "9999999", None, None, None],
                 "pfr_id": [None, "JackLa00_ff", None, "MoorD.00", None, "Anon00"],
                 "sportradar_id": [None, "fb52b041-0000-0000-0000-000000000000", None, None, None, None],
                 "rotowire_id": [None, 12553.0, None, None, None, None],
-                "pff_id": [None, None, None, None, None, None],
+                "pff_id": [None, None, "88888", None, None, None],
                 "name": [None, None, None, None, "Rookie Wideout", "Ghost Player"],
                 "position": [None, None, None, None, "WR", "RB"],
                 "draft_year": [None, None, None, None, 2026, 2026],
+                "draft_round": [None, None, None, None, 0, None],
                 "merge_name": [None, "lamar jackson", "tua tagovailoa", "d.j. moore", None, "ghost player"],
             }
         ).write_parquet(ff_dir / "latest.parquet")
@@ -91,7 +93,10 @@ class TestPlayerDim(unittest.TestCase):
         self.assertEqual(lamar["rotowire_id"], "12553")
         self.assertEqual(lamar["pff_id"], "46416")
         self.assertEqual(lamar["pfr_id"], "JackLa00")
-        self.assertEqual(self._row("00-0036212")["mfl_id"], "14056")
+        tua = self._row("00-0036212")
+        self.assertEqual(tua["mfl_id"], "14056")
+        self.assertEqual(tua["espn_id"], "4241479")
+        self.assertEqual(tua["pff_id"], "55555")
         moore = self._row("00-0034827")
         self.assertEqual(moore["pfr_id"], "MoorD.00")
         self.assertEqual(moore["mfl_id"], "13640")
@@ -107,6 +112,7 @@ class TestPlayerDim(unittest.TestCase):
         self.assertEqual(rookie["merge_name"], "rookie wideout")
         self.assertEqual(rookie["position"], "WR")
         self.assertEqual(rookie["draft_year"], 2026)
+        self.assertIsNone(rookie["draft_round"])
         self.assertEqual(rookie["mfl_id"], "17522")
 
     def test_merge_name_fallback_and_missing_views(self):

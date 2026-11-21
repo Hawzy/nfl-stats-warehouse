@@ -17,8 +17,37 @@ __all__ = [
 ]
 
 OFFENSIVE_POSITIONS: tuple[str, ...] = ("QB", "RB", "WR", "TE", "FB")
+_OFFENSE_ACTIVITY_COLS: tuple[str, ...] = (
+    "attempts",
+    "carries",
+    "targets",
+    "receptions",
+    "passing_yards",
+    "rushing_yards",
+    "receiving_yards",
+    "passing_tds",
+    "rushing_tds",
+    "receiving_tds",
+    "special_teams_tds",
+    "passing_2pt_conversions",
+    "rushing_2pt_conversions",
+    "receiving_2pt_conversions",
+    "rushing_fumbles_lost",
+    "receiving_fumbles_lost",
+    "sack_fumbles_lost",
+)
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _POS_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def _non_offense_activity_sql(existing_cols: set[str]) -> str:
+    """Return SQL predicate identifying non-offensive players with offensive/ST scoring activity."""
+    clauses = [
+        f"coalesce(CAST({c} AS DOUBLE), 0.0) != 0.0"
+        for c in _OFFENSE_ACTIVITY_COLS
+        if c in existing_cols
+    ]
+    return " OR ".join(clauses) if clauses else "FALSE"
 
 
 def _validate_column_name(col: object, stat: str) -> str:
@@ -397,6 +426,7 @@ def build_player_week_points(
         return 0
 
     pos_list_sql = ", ".join(f"'{p}'" for p in OFFENSIVE_POSITIONS)
+    activity_sql = _non_offense_activity_sql(existing_cols)
     subqueries: list[str] = []
 
     for rs in rulesets:
@@ -419,7 +449,12 @@ def build_player_week_points(
                 CAST('{site}' AS VARCHAR) AS site,
                 ROUND(CAST(({off_formula}) AS DOUBLE), 4) AS points
             FROM nfl.player_stats_week
-            WHERE position IN ({pos_list_sql})
+            WHERE player_id IS NOT NULL
+              AND trim(CAST(player_id AS VARCHAR)) != ''
+              AND (
+                position IN ({pos_list_sql})
+                OR ((position IS NULL OR position != 'K') AND ({activity_sql}))
+              )
               AND season BETWEEN {valid_from} AND {valid_to}
             """.strip()
         )
@@ -441,7 +476,9 @@ def build_player_week_points(
                     CAST('{site}' AS VARCHAR) AS site,
                     ROUND(CAST(({k_formula}) AS DOUBLE), 4) AS points
                 FROM nfl.player_stats_week
-                WHERE position = 'K'
+                WHERE player_id IS NOT NULL
+                  AND trim(CAST(player_id AS VARCHAR)) != ''
+                  AND position = 'K'
                   AND season BETWEEN {valid_from} AND {valid_to}
                 """.strip()
             )
