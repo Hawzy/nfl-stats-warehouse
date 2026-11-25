@@ -9,6 +9,7 @@ from typing import Callable
 
 import duckdb
 
+from nfl_warehouse.advanced_stats import build_advanced_stats_tables
 from nfl_warehouse.catalog import VALID_PROFILES, get_datasets
 from nfl_warehouse.connect import connect
 from nfl_warehouse.download import (
@@ -356,6 +357,7 @@ def run(
 
         build_player_dim(con, log=log)
         build_mart_views(con, log=log)
+        build_advanced_stats_tables(con, log=log)
         try:
             con.execute("CHECKPOINT")
         except duckdb.Error:

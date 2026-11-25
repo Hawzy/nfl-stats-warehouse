@@ -9,8 +9,19 @@ A public reference guide mapping modern NFL analytics metrics to exact **nflvers
 | Schema | Role | Examples |
 |---|---|---|
 | `nfl.*` | Raw nflverse Parquet views (`union_by_name = true`) | `nfl.player_stats_week`, `nfl.team_stats_week`, `nfl.pbp`, `nfl.ff_opportunity`, `nfl.snap_counts` |
-| `main.*` | Curated dimension & scoring tables | `main.player_dim`, `main.player_week_points`, `main.team_defense_week_points`, `main.site_scoring` |
+| `main.*` | Curated dimension, scoring & Gold analytical tables | `main.player_dim`, `main.player_week_points`, `main.team_defense_week_points`, `main.site_scoring`, `main.player_week_adv`, `main.player_week_xfp`, `main.team_week_dvp` |
 | `mart.*` | Point-in-time backtesting guardrail layer | `mart.team_abbr_map`, `mart.nextgen_*_weekly`, `mart.depth_charts_weekly`, `mart.player_team_week` |
+
+---
+
+## 0. Materialized Gold Analytical Tables (`main.player_week_adv`, `main.player_week_xfp`, `main.team_week_dvp`)
+
+Automatically materialized at the end of `python -m nfl_warehouse` (`build_advanced_stats_tables(con)`) at deduplicated `REG`-season `(gsis_id, season, week)` / `(defense_team, position, season, week)` grain:
+
+- **`main.player_week_adv`**: Usage and efficiency metrics (`snap_pct`, `offense_snaps`, `team_dropbacks`, `eff_dropbacks`, `est_routes`, `constrained_routes`, `yprr`, `yprr_constrained`, `tprr_pct`, `target_share`, `air_yards_share`, `wopr`, `rec_adot`, `ryoe`, `ryoe_per_att`, `epa_per_db`, `passing_cpoe`, `pass_adot`, `ff_xfp_raw`). Uses frozen pre-2025 `FROZEN_ROUTE_BETAS` (no runtime dependency on post-season `nfl.participation` or `nfl.ftn_charting`). Under `--profile lite` (no `nfl.pbp`), `team_dropbacks` is `0.0` while `eff_dropbacks` falls back to `player_stats_week` team dropbacks (or `34.0`) so `constrained_routes` and `yprr_constrained` remain available.
+- **`main.player_week_xfp`**: Raw expected and actual stat components (`pass_yds_exp`, `pass_td_exp`, `pass_int_exp`, `rush_yds_exp`, `rush_td_exp`, `rush_attempts_exp`, `rec_yds_exp`, `receptions_exp`, `rec_td_exp`, `two_pt_exp`, plus actual box columns and `sacks_suffered`) alongside league-agnostic presets (`xfp_ppr`, `xfp_half`, `xfp_std`, `xfp_yahoo`, `actual_ppr`, `actual_half`, `actual_std`, `actual_yahoo`, `luck_delta_ppr`, `luck_delta_half`, `luck_delta_std`, `luck_delta_yahoo`, `has_ff_opp`). Uses pre-2026 `EMPIRICAL_FUMBLE_LOST_RATE` for expected fumble penalties and falls back to `actual_*` when `nfl.ff_opportunity` is absent for a player-week (`has_ff_opp = FALSE`). Downstream league consumers compute custom-scoring `xFP` in a separate overlay database directly from the raw component columns.
+- **`main.team_week_dvp`**: Weekly Defense vs. Position (`defense_team`, `offense_team`, `position`, `season`, `week`, `player_count`) aggregating `pts_allowed_{ppr,half,std,yahoo}` and `xfp_allowed_{ppr,half,std,yahoo}` from `main.player_week_xfp`.
+- **Missing Optional Views**: When `nfl.player_stats_week` is absent, all three tables are created as empty typed schemas; when optional views (`pbp`, `snap_counts`, `ff_opportunity`, `nextgen_rushing`, `participation`, `ftn_charting`) are absent, builders degrade cleanly with `0.0` / `FALSE` fallbacks without failing.
 
 ---
 

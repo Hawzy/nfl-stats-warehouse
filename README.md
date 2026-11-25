@@ -15,6 +15,10 @@ A portable, zero-API-key **DuckDB + nflverse Parquet** NFL analytics warehouse d
 - **Pluggable Scoring & Crosswalk (`main.*`)**:
   - `main.player_dim` joins `gsis_id` to `mfl_id`, `yahoo_id`, `sleeper_id`, `espn_id`, `fantasypros_id`, `pfr_id`, `sportradar_id`, `rotowire_id`, and `pff_id`.
   - `main.player_week_points` and `main.team_defense_week_points` compute `ppr`, `half_ppr`, `standard`, and `yahoo` presets (including two-way/non-offensive players with offensive or return stats, plus custom rules via `--scoring-config`, Kickers, Team DEF/DST, TE Premium, PPFD).
+- **League-Agnostic Gold Analytical Tables (`main.*`)**:
+  - `main.player_week_adv`: Deduplicated `REG`-season usage & efficiency (`snap_pct`, `est_routes`, `constrained_routes`, `yprr`, `yprr_constrained`, `tprr_pct`, `target_share`, `air_yards_share`, `wopr`, `ryoe`, `ryoe_per_att`, `epa_per_db`, `passing_cpoe`, `pass_adot`, `rec_adot`, `ff_xfp_raw`).
+  - `main.player_week_xfp`: Raw `ff_opportunity` expected/actual components plus standard scoring presets (`xfp_ppr`, `xfp_half`, `xfp_std`, `xfp_yahoo`, `actual_*`, `luck_delta_*`, `has_ff_opp`), gracefully falling back when optional views (`pbp`, `snap_counts`, `ff_opportunity`) are absent.
+  - `main.team_week_dvp`: Weekly defensive fantasy points and `xFP` allowed by `(defense_team, position, season, week)` across all 4 standard presets.
 - **Read-Only External DB Attachments**: `connect(read_only=True, attach={"league": Path(...)})` attaches downstream SQLite or DuckDB databases strictly `READ_ONLY`.
 
 ## Installation
