@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import threading
 from typing import Any, Callable, Mapping, Sequence
 
 import duckdb
@@ -14,6 +15,7 @@ __all__ = ["connect", "query_polars"]
 
 _ALIAS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DUCKDB_SUFFIXES = {".duckdb", ".ddb"}
+_ATTACH_LOCK = threading.Lock()
 
 
 def _load_sqlite_extension(con: duckdb.DuckDBPyConnection) -> None:
@@ -49,27 +51,30 @@ def connect(
         set_file_search_path(con, paths.data_dir)
 
         if attach:
-            sqlite_loaded = False
-            for alias, raw_target in attach.items():
-                if not _ALIAS_RE.fullmatch(alias):
-                    raise ValueError(
-                        f"Invalid attachment alias {alias!r}; must match [A-Za-z_][A-Za-z0-9_]*"
-                    )
-                target = Path(raw_target).expanduser()
-                if not target.exists():
-                    log(f"Skipping attachment '{alias}': {target} not found")
-                    continue
+            with _ATTACH_LOCK:
+                sqlite_loaded = False
+                for alias, raw_target in attach.items():
+                    if not _ALIAS_RE.fullmatch(alias):
+                        raise ValueError(
+                            f"Invalid attachment alias {alias!r}; must match [A-Za-z_][A-Za-z0-9_]*"
+                        )
+                    target = Path(raw_target).expanduser()
+                    if not target.exists():
+                        log(f"Skipping attachment '{alias}': {target} not found")
+                        continue
 
-                escaped = target.resolve().as_posix().replace("'", "''")
-                if target.suffix.lower() in _DUCKDB_SUFFIXES:
-                    con.execute(f"ATTACH '{escaped}' AS {alias} (READ_ONLY)")
-                else:
-                    if not sqlite_loaded:
-                        _load_sqlite_extension(con)
-                        sqlite_loaded = True
-                    con.execute(
-                        f"ATTACH '{escaped}' AS {alias} (TYPE sqlite, READ_ONLY)"
-                    )
+                    escaped = target.resolve().as_posix().replace("'", "''")
+                    if target.suffix.lower() in _DUCKDB_SUFFIXES:
+                        con.execute(
+                            f"ATTACH IF NOT EXISTS '{escaped}' AS {alias} (READ_ONLY)"
+                        )
+                    else:
+                        if not sqlite_loaded:
+                            _load_sqlite_extension(con)
+                            sqlite_loaded = True
+                        con.execute(
+                            f"ATTACH IF NOT EXISTS '{escaped}' AS {alias} (TYPE sqlite, READ_ONLY)"
+                        )
     except Exception:
         con.close()
         raise

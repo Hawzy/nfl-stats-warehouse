@@ -1,5 +1,6 @@
 """Tests for DuckDB connect() read-only enforcement and generalized attachments."""
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 from pathlib import Path
 import sqlite3
@@ -110,6 +111,40 @@ class TestConnect(unittest.TestCase):
             )
             self.assertEqual(empty_df.shape, (0, 2))
             self.assertEqual(empty_df.columns, ["gsis_id", "proj"])
+
+    def test_concurrent_overlapping_read_only_attachments_succeed(self):
+        connect(self.paths).close()
+        attach_map = {"league": self.sqlite_path, "proj": self.ext_duckdb_path}
+
+        c1 = connect(self.paths, read_only=True, attach=attach_map)
+        c2 = connect(self.paths, read_only=True, attach=attach_map)
+        try:
+            self.assertEqual(
+                c1.execute("SELECT count(*) FROM league.rosters").fetchone()[0], 1
+            )
+            self.assertEqual(
+                c2.execute("SELECT proj FROM proj.custom_proj").fetchone()[0], 18.5
+            )
+            c1.close()
+            self.assertEqual(
+                c2.execute("SELECT count(*) FROM league.rosters").fetchone()[0], 1
+            )
+        finally:
+            try:
+                c1.close()
+            except Exception:
+                pass
+            c2.close()
+
+        def _worker() -> tuple[int, float]:
+            with connect(self.paths, read_only=True, attach=attach_map) as con:
+                cnt = con.execute("SELECT count(*) FROM league.rosters").fetchone()[0]
+                proj = con.execute("SELECT proj FROM proj.custom_proj").fetchone()[0]
+                return int(cnt), float(proj)
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: _worker(), range(12)))
+        self.assertEqual(results, [(1, 18.5)] * 12)
 
     def test_package_has_no_private_league_coupling(self):
         pkg_src = "".join(
